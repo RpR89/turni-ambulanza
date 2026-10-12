@@ -1,0 +1,10 @@
+{
+  "name": "turni-ambulanza",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pianificazione dei turni dei dipendenti del comitato",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "npx --yes http-server -p 8080 -c-1 ."
+  }
+}

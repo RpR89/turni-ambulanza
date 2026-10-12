@@ -1,0 +1,343 @@
+/*
+ * Regole di pianificazione turni: calcolo ore, vincoli e proposta automatica.
+ * Nessuna dipendenza dal DOM: usato dal browser (window.Rules) e dai test Node.
+ */
+(function (root) {
+  'use strict';
+
+  var DAY_MS = 86400000;
+
+  // Turni di lavoro: ora di inizio e durata in ore.
+  var SHIFTS = {
+    G: { code: 'G', label: 'Giorno 7–19', start: 7, hours: 12 },
+    N: { code: 'N', label: 'Notte 19–7', start: 19, hours: 12 }
+  };
+
+  // Assenze giustificate: valgono come ore lavorate nei giorni lun–ven.
+  var ABSENCES = {
+    F: { code: 'F', label: 'Ferie' },
+    M: { code: 'M', label: 'Malattia' }
+  };
+
+  var DEFAULT_SETTINGS = {
+    maxWeeklyHours: 48,
+    minRestHours: 11,
+    fullTimeWeeklyHours: 38,
+    staffPerShift: { G: 2, N: 2 }
+  };
+
+  // ---------- Date (sempre in UTC, così l'ora legale non sposta i giorni) ----------
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function toKey(y, m, d) { return y + '-' + pad(m) + '-' + pad(d); }
+
+  function parseKey(key) {
+    var p = key.split('-');
+    return { y: +p[0], m: +p[1], d: +p[2] };
+  }
+
+  function dayNumber(key) {
+    var p = parseKey(key);
+    return Math.round(Date.UTC(p.y, p.m - 1, p.d) / DAY_MS);
+  }
+
+  function keyFromDayNumber(n) {
+    var dt = new Date(n * DAY_MS);
+    return toKey(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+  }
+
+  function addDays(key, n) { return keyFromDayNumber(dayNumber(key) + n); }
+
+  // 0 = lunedì … 6 = domenica
+  function weekday(key) {
+    var p = parseKey(key);
+    return (new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay() + 6) % 7;
+  }
+
+  function isWorkingDay(key) { return weekday(key) < 5; }
+
+  function daysInMonth(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+
+  function monthDays(y, m) {
+    var out = [];
+    for (var d = 1; d <= daysInMonth(y, m); d++) out.push(toKey(y, m, d));
+    return out;
+  }
+
+  // Lunedì della settimana che contiene la data.
+  function weekStart(key) { return addDays(key, -weekday(key)); }
+
+  // Settimane (lun–dom) che toccano il mese, anche solo in parte.
+  function monthWeeks(y, m) {
+    var days = monthDays(y, m);
+    var out = [];
+    var w = weekStart(days[0]);
+    var last = days[days.length - 1];
+    while (dayNumber(w) <= dayNumber(last)) {
+      out.push(w);
+      w = addDays(w, 7);
+    }
+    return out;
+  }
+
+  // ---------- Ore ----------
+
+  function workingDaysInMonth(y, m) {
+    return monthDays(y, m).filter(isWorkingDay).length;
+  }
+
+  function dailyHours(emp) { return emp.weeklyHours / 5; }
+
+  // Monte ore del mese: giorni lun–ven × (ore settimanali / 5).
+  // Tempo pieno 38 h → 7,6 h al giorno; part-time 24 h → 4,8 h al giorno.
+  function monthlyTarget(emp, y, m) {
+    return round1(workingDaysInMonth(y, m) * dailyHours(emp));
+  }
+
+  function round1(x) { return Math.round(x * 10) / 10; }
+
+  function empAssignments(state, empId) {
+    return (state.assignments && state.assignments[empId]) || {};
+  }
+
+  // Un turno appartiene al giorno (e quindi a settimana e mese) in cui inizia.
+  function shiftHoursOn(state, empId, key) {
+    var s = SHIFTS[empAssignments(state, empId)[key]];
+    return s ? s.hours : 0;
+  }
+
+  function monthSummary(state, emp, y, m) {
+    var a = empAssignments(state, emp.id);
+    var worked = 0, absence = 0, counts = { G: 0, N: 0, F: 0, M: 0 };
+    monthDays(y, m).forEach(function (key) {
+      var code = a[key];
+      if (!code) return;
+      counts[code] = (counts[code] || 0) + 1;
+      if (SHIFTS[code]) worked += SHIFTS[code].hours;
+      else if (ABSENCES[code] && isWorkingDay(key)) absence += dailyHours(emp);
+    });
+    var target = monthlyTarget(emp, y, m);
+    absence = round1(absence);
+    return {
+      worked: worked,
+      absence: absence,
+      target: target,
+      balance: round1(worked + absence - target),
+      counts: counts
+    };
+  }
+
+  function weekHours(state, empId, monday) {
+    var tot = 0;
+    for (var i = 0; i < 7; i++) tot += shiftHoursOn(state, empId, addDays(monday, i));
+    return tot;
+  }
+
+  // ---------- Vincoli ----------
+
+  // Inizio e fine di un turno in ore assolute (giorno × 24 + ora).
+  function shiftSpan(key, code) {
+    var s = SHIFTS[code];
+    var start = dayNumber(key) * 24 + s.start;
+    return { start: start, end: start + s.hours };
+  }
+
+  // Turni del dipendente nell'intervallo [from, to], in ordine.
+  function shiftsBetween(state, empId, fromKey, toKey_) {
+    var a = empAssignments(state, empId);
+    var out = [];
+    for (var n = dayNumber(fromKey); n <= dayNumber(toKey_); n++) {
+      var key = keyFromDayNumber(n);
+      if (SHIFTS[a[key]]) out.push({ key: key, code: a[key] });
+    }
+    return out;
+  }
+
+  function settingsOf(state) {
+    var s = state.settings || {};
+    return {
+      maxWeeklyHours: s.maxWeeklyHours != null ? s.maxWeeklyHours : DEFAULT_SETTINGS.maxWeeklyHours,
+      minRestHours: s.minRestHours != null ? s.minRestHours : DEFAULT_SETTINGS.minRestHours,
+      staffPerShift: s.staffPerShift || DEFAULT_SETTINGS.staffPerShift
+    };
+  }
+
+  /*
+   * Motivi per cui il dipendente non può fare il turno `code` il giorno `key`
+   * (ignorando quello che c'è già scritto in quel giorno). Array vuoto = ok.
+   */
+  function blockers(state, empId, key, code) {
+    var cfg = settingsOf(state);
+    var reasons = [];
+    var span = shiftSpan(key, code);
+
+    shiftsBetween(state, empId, addDays(key, -2), addDays(key, 2)).forEach(function (s) {
+      if (s.key === key) return;
+      var other = shiftSpan(s.key, s.code);
+      var gap = other.start >= span.end ? other.start - span.end : span.start - other.end;
+      if (gap < cfg.minRestHours) {
+        reasons.push('riposo di ' + Math.max(gap, 0) + ' h con il turno ' + s.code + ' del ' + s.key +
+          ' (minimo ' + cfg.minRestHours + ' h)');
+      }
+    });
+
+    var monday = weekStart(key);
+    var hours = weekHours(state, empId, monday) - shiftHoursOn(state, empId, key) + SHIFTS[code].hours;
+    if (hours > cfg.maxWeeklyHours) {
+      reasons.push(hours + ' h nella settimana dal ' + monday + ' (massimo ' + cfg.maxWeeklyHours + ' h)');
+    }
+    return reasons;
+  }
+
+  /*
+   * Tutti i problemi del mese: violazioni dei vincoli (errori) e
+   * copertura dei turni diversa da quella richiesta (avvisi).
+   */
+  function validateMonth(state, y, m) {
+    var cfg = settingsOf(state);
+    var days = monthDays(y, m);
+    var first = days[0], last = days[days.length - 1];
+    var issues = [];
+
+    activeOf(state).forEach(function (emp) {
+      // Riposo: controlla anche i turni a cavallo con il mese prima/dopo.
+      var shifts = shiftsBetween(state, emp.id, addDays(first, -1), addDays(last, 1));
+      for (var i = 1; i < shifts.length; i++) {
+        var prev = shiftSpan(shifts[i - 1].key, shifts[i - 1].code);
+        var cur = shiftSpan(shifts[i].key, shifts[i].code);
+        var gap = cur.start - prev.end;
+        var inMonth = shifts[i].key >= first && shifts[i].key <= last;
+        if (gap < cfg.minRestHours && (inMonth || shifts[i - 1].key >= first)) {
+          issues.push({
+            level: 'error', type: 'rest', empId: emp.id,
+            dates: [shifts[i - 1].key, shifts[i].key],
+            message: 'Riposo di ' + Math.max(gap, 0) + ' h tra ' + shifts[i - 1].code + ' del ' +
+              shifts[i - 1].key + ' e ' + shifts[i].code + ' del ' + shifts[i].key +
+              ' (minimo ' + cfg.minRestHours + ' h)'
+          });
+        }
+      }
+
+      monthWeeks(y, m).forEach(function (monday) {
+        var h = weekHours(state, emp.id, monday);
+        if (h > cfg.maxWeeklyHours) {
+          var dates = shiftsBetween(state, emp.id, monday, addDays(monday, 6)).map(function (s) { return s.key; });
+          issues.push({
+            level: 'error', type: 'week', empId: emp.id, dates: dates, week: monday,
+            message: h + ' h nella settimana dal ' + monday + ' al ' + addDays(monday, 6) +
+              ' (massimo ' + cfg.maxWeeklyHours + ' h)'
+          });
+        }
+      });
+    });
+
+    days.forEach(function (key) {
+      Object.keys(SHIFTS).forEach(function (code) {
+        var need = +cfg.staffPerShift[code] || 0;
+        var have = staffOn(state, key, code).length;
+        if (have !== need) {
+          issues.push({
+            level: 'warning', type: 'coverage', dates: [key], shift: code,
+            message: 'Turno ' + code + ' del ' + key + ': ' + have + ' su ' + need +
+              (have < need ? ' (scoperto)' : ' (in eccesso)')
+          });
+        }
+      });
+    });
+
+    return issues;
+  }
+
+  // I dipendenti non più attivi restano nello storico ma non contano nei controlli.
+  function activeOf(state) {
+    return (state.employees || []).filter(function (e) { return e.active !== false; });
+  }
+
+  function staffOn(state, key, code) {
+    return activeOf(state).filter(function (e) {
+      return empAssignments(state, e.id)[key] === code;
+    });
+  }
+
+  // ---------- Proposta automatica ----------
+
+  /*
+   * Riempie i turni scoperti del mese senza toccare quello che è già inserito.
+   * Rispetta sempre riposo minimo e massimo settimanale; a parità sceglie chi
+   * è più indietro rispetto al proprio monte ore mensile.
+   * Restituisce un nuovo oggetto assignments e la lista dei turni rimasti scoperti.
+   */
+  function generateMonth(state, y, m) {
+    var cfg = settingsOf(state);
+    var work = {
+      settings: state.settings,
+      employees: activeOf(state),
+      assignments: JSON.parse(JSON.stringify(state.assignments || {}))
+    };
+    var target = {}, done = {};
+    work.employees.forEach(function (e) {
+      if (!work.assignments[e.id]) work.assignments[e.id] = {};
+      var s = monthSummary(work, e, y, m);
+      target[e.id] = s.target;
+      done[e.id] = s.worked + s.absence;
+    });
+
+    var uncovered = [];
+    monthDays(y, m).forEach(function (key) {
+      ['G', 'N'].forEach(function (code) {
+        var need = (+cfg.staffPerShift[code] || 0) - staffOn(work, key, code).length;
+        while (need > 0) {
+          var candidates = work.employees.filter(function (e) {
+            return !work.assignments[e.id][key] && blockers(work, e.id, key, code).length === 0;
+          });
+          if (!candidates.length) {
+            uncovered.push({ date: key, shift: code, missing: need });
+            break;
+          }
+          candidates.sort(function (a, b) {
+            // Prima chi non ha ancora raggiunto il monte ore, poi il più indietro in proporzione.
+            var ra = target[a.id] ? done[a.id] / target[a.id] : Infinity;
+            var rb = target[b.id] ? done[b.id] / target[b.id] : Infinity;
+            var oa = done[a.id] + SHIFTS[code].hours > target[a.id] ? 1 : 0;
+            var ob = done[b.id] + SHIFTS[code].hours > target[b.id] ? 1 : 0;
+            if (oa !== ob) return oa - ob;
+            if (ra !== rb) return ra - rb;
+            return String(a.name).localeCompare(String(b.name));
+          });
+          var pick = candidates[0];
+          work.assignments[pick.id][key] = code;
+          done[pick.id] += SHIFTS[code].hours;
+          need--;
+        }
+      });
+    });
+
+    return { assignments: work.assignments, uncovered: uncovered };
+  }
+
+  var Rules = {
+    SHIFTS: SHIFTS,
+    ABSENCES: ABSENCES,
+    DEFAULT_SETTINGS: DEFAULT_SETTINGS,
+    toKey: toKey,
+    addDays: addDays,
+    weekday: weekday,
+    isWorkingDay: isWorkingDay,
+    daysInMonth: daysInMonth,
+    monthDays: monthDays,
+    weekStart: weekStart,
+    monthWeeks: monthWeeks,
+    workingDaysInMonth: workingDaysInMonth,
+    monthlyTarget: monthlyTarget,
+    monthSummary: monthSummary,
+    weekHours: weekHours,
+    blockers: blockers,
+    validateMonth: validateMonth,
+    staffOn: staffOn,
+    generateMonth: generateMonth
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = Rules;
+  else root.Rules = Rules;
+})(this);

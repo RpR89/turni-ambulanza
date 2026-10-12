@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Turni Ambulanza</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar no-print">
+    <h1>Turni Ambulanza</h1>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="turni">Turni</button>
+      <button class="tab" data-tab="dipendenti">Dipendenti</button>
+      <button class="tab" data-tab="impostazioni">Impostazioni</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ================= TURNI ================= -->
+    <section id="tab-turni" class="panel active">
+      <div class="toolbar no-print">
+        <div class="month-nav">
+          <button id="prev-month" title="Mese precedente">‹</button>
+          <h2 id="month-title"></h2>
+          <button id="next-month" title="Mese successivo">›</button>
+          <button id="today" class="ghost">Oggi</button>
+        </div>
+
+        <div class="tools" role="radiogroup" aria-label="Cosa inserire">
+          <span class="tools-label">Inserisci:</span>
+          <button class="tool cell-G active" data-tool="G" title="Turno giorno 7–19 (tasto G)">G <small>7–19</small></button>
+          <button class="tool cell-N" data-tool="N" title="Turno notte 19–7 (tasto N)">N <small>19–7</small></button>
+          <button class="tool cell-F" data-tool="F" title="Ferie (tasto F)">F <small>ferie</small></button>
+          <button class="tool cell-M" data-tool="M" title="Malattia (tasto M)">M <small>malattia</small></button>
+          <button class="tool cell-clear" data-tool="" title="Cancella (tasto Canc)">✕ <small>cancella</small></button>
+        </div>
+
+        <div class="actions">
+          <button id="btn-generate" class="primary" title="Riempie i turni scoperti rispettando i vincoli">Proposta automatica</button>
+          <button id="btn-undo" title="Annulla l'ultima modifica (Ctrl+Z)">Annulla</button>
+          <button id="btn-clear-month">Svuota mese</button>
+          <button id="btn-print">Stampa</button>
+          <button id="btn-csv">Esporta CSV</button>
+        </div>
+      </div>
+
+      <h2 class="print-only" id="print-title"></h2>
+
+      <div class="grid-wrap">
+        <table id="grid" class="grid"></table>
+      </div>
+
+      <p class="hint no-print">
+        Scegli cosa inserire e clicca sulle caselle (puoi anche trascinare). Da tastiera: frecce per muoverti,
+        <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> per scrivere, <kbd>Canc</kbd> per cancellare.
+        Le caselle rosse violano un vincolo: passa sopra con il mouse per il dettaglio.
+      </p>
+
+      <div class="below">
+        <section class="card">
+          <h3>Ore per settimana <small>(lun–dom, massimo <span class="max-week"></span> h)</small></h3>
+          <div class="grid-wrap"><table id="weeks" class="grid small"></table></div>
+        </section>
+        <section class="card no-print">
+          <h3>Controlli <span id="issue-count" class="badge"></span></h3>
+          <ul id="issues" class="issues"></ul>
+        </section>
+      </div>
+    </section>
+
+    <!-- ================= DIPENDENTI ================= -->
+    <section id="tab-dipendenti" class="panel">
+      <div class="card">
+        <h3>Aggiungi dipendente</h3>
+        <form id="emp-form" class="row-form">
+          <input id="emp-name" placeholder="Cognome e nome" required>
+          <select id="emp-contract">
+            <option value="38">Tempo pieno (38 h/sett.)</option>
+            <option value="24">Part-time (24 h/sett.)</option>
+            <option value="custom">Altro…</option>
+          </select>
+          <input id="emp-hours" type="number" min="1" max="48" step="0.5" placeholder="h/sett." hidden>
+          <button class="primary">Aggiungi</button>
+        </form>
+      </div>
+      <div class="card">
+        <h3>Elenco <small>(usa ▲▼ per cambiare l'ordine nel tabellone)</small></h3>
+        <table id="emp-table" class="list"></table>
+      </div>
+    </section>
+
+    <!-- ================= IMPOSTAZIONI ================= -->
+    <section id="tab-impostazioni" class="panel">
+      <div class="card">
+        <h3>Vincoli e copertura</h3>
+        <form id="settings-form" class="settings">
+          <label>Massimo ore settimanali <input type="number" name="maxWeeklyHours" min="1" step="1"></label>
+          <label>Riposo minimo tra due turni (ore) <input type="number" name="minRestHours" min="0" step="1"></label>
+          <label>Persone richieste per turno giorno (7–19) <input type="number" name="staffG" min="0" step="1"></label>
+          <label>Persone richieste per turno notte (19–7) <input type="number" name="staffN" min="0" step="1"></label>
+          <button class="primary">Salva</button>
+        </form>
+        <p class="note">
+          Monte ore mensile = giorni dal lunedì al venerdì del mese × (ore settimanali ÷ 5):
+          7,6 h per il tempo pieno da 38 h, 4,8 h per il part-time da 24 h.
+          Ferie e malattia nei giorni lun–ven valgono come ore svolte (stessa quota giornaliera).
+          Ogni turno conta nella settimana e nel mese in cui inizia.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Salvataggio dati</h3>
+        <p class="note">
+          I dati restano salvati in questo browser, su questo computer. Scarica un backup ogni tanto:
+          serve anche per spostare i turni su un altro computer o un altro browser.
+        </p>
+        <div class="actions">
+          <button id="btn-backup" class="primary">Scarica backup</button>
+          <label class="button">Carica backup <input id="file-restore" type="file" accept="application/json,.json" hidden></label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/rules.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

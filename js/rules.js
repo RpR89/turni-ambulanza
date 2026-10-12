@@ -38,8 +38,17 @@
     fullTimeWeeklyHours: 38,
     staffPerShift: { G: 2, N: 2 },
     perm104Hours: 7.6,
-    perm104PerMonth: 3
+    perm104PerMonth: 3,
+    minDriversPerShift: 1
   };
+
+  // Qualifiche: l'autista soccorritore ha la patente per guidare l'ambulanza.
+  var ROLES = {
+    autista: 'Autista soccorritore',
+    soccorritore: 'Soccorritore'
+  };
+
+  function isDriver(emp) { return emp.role === 'autista'; }
 
   // ---------- Date (sempre in UTC, così l'ora legale non sposta i giorni) ----------
 
@@ -288,12 +297,24 @@
     days.forEach(function (key) {
       Object.keys(SHIFTS).forEach(function (code) {
         var need = +cfg.staffPerShift[code] || 0;
-        var have = staffOn(state, key, code).length;
+        var staff = staffOn(state, key, code);
+        var have = staff.length;
         if (have !== need) {
           issues.push({
             level: 'warning', type: 'coverage', dates: [key], shift: code,
             message: 'Turno ' + code + ' del ' + key + ': ' + have + ' su ' + need +
               (have < need ? ' (scoperto)' : ' (in eccesso)')
+          });
+        }
+        // Un turno con personale deve avere almeno un autista soccorritore.
+        var minDrivers = settingNum(state, 'minDriversPerShift');
+        var drivers = staff.filter(isDriver).length;
+        if (have > 0 && drivers < minDrivers) {
+          issues.push({
+            level: 'error', type: 'driver', dates: [key], shift: code,
+            empIds: staff.map(function (e) { return e.id; }),
+            message: 'Turno ' + code + ' del ' + key + ': ' +
+              (drivers ? drivers + ' autisti soccorritori su ' + minDrivers + ' richiesti' : 'manca l\'autista soccorritore')
           });
         }
       });
@@ -328,6 +349,7 @@
       employees: activeOf(state),
       assignments: JSON.parse(JSON.stringify(state.assignments || {}))
     };
+    var minDrivers = settingNum(state, 'minDriversPerShift');
     var target = {}, done = {};
     work.employees.forEach(function (e) {
       if (!work.assignments[e.id]) work.assignments[e.id] = {};
@@ -339,26 +361,39 @@
     var uncovered = [];
     monthDays(y, m).forEach(function (key) {
       ['G', 'N'].forEach(function (code) {
-        var need = (+cfg.staffPerShift[code] || 0) - staffOn(work, key, code).length;
+        var staffed = staffOn(work, key, code);
+        var need = (+cfg.staffPerShift[code] || 0) - staffed.length;
+        var driversNeeded = Math.max(0, minDrivers - staffed.filter(isDriver).length);
         while (need > 0) {
-          var candidates = work.employees.filter(function (e) {
+          var available = work.employees.filter(function (e) {
             return !work.assignments[e.id][key] && blockers(work, e.id, key, code).length === 0;
           });
+          // Finché manca l'autista, il posto va a un autista soccorritore.
+          var candidates = driversNeeded > 0 ? available.filter(isDriver) : available;
+          if (!candidates.length && driversNeeded > 0 && available.length) {
+            uncovered.push({ date: key, shift: code, missing: 0, driver: true });
+            driversNeeded = 0;
+            candidates = available;
+          }
           if (!candidates.length) {
             uncovered.push({ date: key, shift: code, missing: need });
             break;
           }
+          var preferNonDrivers = driversNeeded === 0;
           candidates.sort(function (a, b) {
-            // Prima chi non ha ancora raggiunto il monte ore, poi il più indietro in proporzione.
+            // Prima chi non ha ancora raggiunto il monte ore; poi, a autista già coperto,
+            // i soccorritori (gli autisti servono negli altri turni); infine il più indietro.
             var ra = target[a.id] ? done[a.id] / target[a.id] : Infinity;
             var rb = target[b.id] ? done[b.id] / target[b.id] : Infinity;
             var oa = done[a.id] + SHIFTS[code].hours > target[a.id] ? 1 : 0;
             var ob = done[b.id] + SHIFTS[code].hours > target[b.id] ? 1 : 0;
             if (oa !== ob) return oa - ob;
+            if (preferNonDrivers && isDriver(a) !== isDriver(b)) return isDriver(a) ? 1 : -1;
             if (ra !== rb) return ra - rb;
             return String(a.name).localeCompare(String(b.name));
           });
           var pick = candidates[0];
+          if (isDriver(pick)) driversNeeded = Math.max(0, driversNeeded - 1);
           work.assignments[pick.id][key] = code;
           done[pick.id] += SHIFTS[code].hours;
           need--;
@@ -373,6 +408,8 @@
     SHIFTS: SHIFTS,
     ABSENCES: ABSENCES,
     OTHER: OTHER,
+    ROLES: ROLES,
+    isDriver: isDriver,
     codeOf: codeOf,
     codeOn: codeOn,
     workHoursOn: workHoursOn,

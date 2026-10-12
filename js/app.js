@@ -37,6 +37,7 @@
     base.employees = s.employees.map(function (e) {
       return {
         id: String(e.id), name: String(e.name || ''), weeklyHours: +e.weeklyHours || 38,
+        role: e.role === 'autista' ? 'autista' : 'soccorritore',
         has104: !!e.has104, active: e.active !== false
       };
     });
@@ -194,9 +195,11 @@
     var cellErr = {};
     issues.forEach(function (i) {
       if (i.level !== 'error') return;
-      i.dates.forEach(function (d) {
-        var k = i.empId + '|' + d;
-        (cellErr[k] = cellErr[k] || []).push(prettyDates(i.message));
+      (i.empIds || [i.empId]).forEach(function (id) {
+        i.dates.forEach(function (d) {
+          var k = id + '|' + d;
+          (cellErr[k] = cellErr[k] || []).push(prettyDates(i.message));
+        });
       });
     });
 
@@ -225,8 +228,10 @@
         tag = ' <span class="tag104' + (used >= max ? ' full' : '') + '" title="Permessi 104 usati nel mese">104 · ' +
           used + '/' + max + '</span>';
       }
-      h += '<tr><th class="name" title="' + esc(contractLabel(e.weeklyHours)) + '">' + esc(e.name) + tag +
-        (e.weeklyHours !== 38 ? ' <small>' + esc(contractLabel(e.weeklyHours)) + '</small>' : '') + '</th>';
+      var info = R.ROLES[e.role] + (e.weeklyHours !== 38 ? ' · ' + contractLabel(e.weeklyHours) : '');
+      h += '<tr><th class="name' + (R.isDriver(e) ? ' driver' : '') + '" title="' + esc(info) + '">' +
+        (R.isDriver(e) ? '<span class="drv" title="Autista soccorritore">A</span>' : '') + esc(e.name) + tag +
+        '<small>' + esc(info) + '</small></th>';
       days.forEach(function (key, col) {
         var entry = getEntry(e.id, key);
         var code = R.codeOf(entry);
@@ -255,6 +260,18 @@
         h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' +
           esc(R.staffOn(state, key, code)
             .map(function (e) { return e.name; }).join(', ') || 'Nessuno') + '">' + have + '</td>';
+      });
+      h += '<td colspan="5"></td></tr>';
+    });
+    var minDrivers = +state.settings.minDriversPerShift;
+    ['G', 'N'].forEach(function (code) {
+      h += '<tr class="drivers"><th class="name">Autisti ' + code + ' <small>(almeno ' + minDrivers + ')</small></th>';
+      days.forEach(function (key) {
+        var staff = R.staffOn(state, key, code);
+        var drv = staff.filter(R.isDriver);
+        var cls = staff.length && drv.length < minDrivers ? 'under' : drv.length ? 'ok' : '';
+        h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' +
+          esc(drv.map(function (e) { return e.name; }).join(', ') || 'Nessun autista') + '">' + drv.length + '</td>';
       });
       h += '<td colspan="5"></td></tr>';
     });
@@ -293,9 +310,10 @@
 
     var h = '';
     errors.forEach(function (i) {
-      var e = empById(i.empId);
-      h += '<li class="err" data-emp="' + esc(i.empId) + '" data-date="' + i.dates[i.dates.length - 1] + '"><b>' +
-        esc(e ? e.name : '?') + '</b>: ' + esc(prettyDates(i.message)) + '</li>';
+      var empId = i.empId || (i.empIds || [])[0] || '';
+      var e = i.empId ? empById(i.empId) : null;
+      h += '<li class="err" data-emp="' + esc(empId) + '" data-date="' + i.dates[i.dates.length - 1] + '">' +
+        (e ? '<b>' + esc(e.name) + '</b>: ' : '') + esc(prettyDates(i.message)) + '</li>';
     });
     function group(list, label, cls) {
       if (!list.length) return '';
@@ -438,7 +456,11 @@
     renderMonth();
     if (res.uncovered.length) {
       var miss = res.uncovered.reduce(function (t, u) { return t + u.missing; }, 0);
-      toast('Fatto. Restano ' + miss + ' posti scoperti che non si possono coprire senza violare i vincoli.', true);
+      var noDriver = res.uncovered.filter(function (u) { return u.driver; }).length;
+      var parts = [];
+      if (miss) parts.push(miss + ' posti scoperti');
+      if (noDriver) parts.push(noDriver + ' turni senza autista');
+      toast('Fatto. Restano ' + parts.join(' e ') + ': non si possono sistemare senza violare i vincoli.', true);
     } else {
       toast('Fatto: tutti i turni del mese sono coperti.');
     }
@@ -458,16 +480,16 @@
 
   function exportCsv() {
     var days = R.monthDays(view.y, view.m);
-    var rows = [['Dipendente', 'Contratto'].concat(days.map(function (k) {
+    var rows = [['Dipendente', 'Qualifica', 'Contratto'].concat(days.map(function (k) {
       return WEEKDAYS[R.weekday(k)] + ' ' + (+k.slice(8));
     }), ['Ore turni', 'Ore formazione', 'Ore assenze', 'Ore previste', 'Saldo'])];
     activeEmployees().forEach(function (e) {
       var s = R.monthSummary(state, e, view.y, view.m);
-      rows.push([e.name, contractLabel(e.weeklyHours)].concat(days.map(function (k) { return cellText(getEntry(e.id, k)); }),
+      rows.push([e.name, R.ROLES[e.role], contractLabel(e.weeklyHours)].concat(days.map(function (k) { return cellText(getEntry(e.id, k)); }),
         [fmt(s.worked), fmt(s.training), fmt(s.absence), fmt(s.target), fmtSigned(s.balance)]));
     });
     ['G', 'N'].forEach(function (code) {
-      rows.push(['Copertura ' + code, ''].concat(days.map(function (k) {
+      rows.push(['Copertura ' + code, '', ''].concat(days.map(function (k) {
         return String(R.staffOn(state, k, code).length);
       })));
     });
@@ -503,15 +525,18 @@
   // ---------- Dipendenti ----------
 
   function renderEmployees() {
-    var h = '<thead><tr><th></th><th>Nome</th><th>Contratto</th><th>Monte ore ' + MONTHS[view.m - 1].toLowerCase() +
+    var h = '<thead><tr><th></th><th>Nome</th><th>Qualifica</th><th>Contratto</th><th>Monte ore ' + MONTHS[view.m - 1].toLowerCase() +
       '</th><th>Legge 104</th><th>Attivo</th><th></th></tr></thead><tbody>';
-    if (!state.employees.length) h += '<tr><td colspan="7" class="empty">Nessun dipendente inserito.</td></tr>';
+    if (!state.employees.length) h += '<tr><td colspan="8" class="empty">Nessun dipendente inserito.</td></tr>';
     state.employees.forEach(function (e, i) {
       var std = e.weeklyHours === 38 || e.weeklyHours === 24;
       h += '<tr data-id="' + esc(e.id) + '">' +
         '<td class="order"><button data-act="up" title="Sposta su"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" title="Sposta giù"' + (i === state.employees.length - 1 ? ' disabled' : '') + '>▼</button></td>' +
         '<td><input data-field="name" value="' + esc(e.name) + '"></td>' +
+        '<td><select data-field="role">' +
+        '<option value="autista"' + (R.isDriver(e) ? ' selected' : '') + '>Autista soccorritore</option>' +
+        '<option value="soccorritore"' + (!R.isDriver(e) ? ' selected' : '') + '>Soccorritore</option></select></td>' +
         '<td><select data-field="contract">' +
         '<option value="38"' + (e.weeklyHours === 38 ? ' selected' : '') + '>Tempo pieno (38 h)</option>' +
         '<option value="24"' + (e.weeklyHours === 24 ? ' selected' : '') + '>Part-time (24 h)</option>' +
@@ -539,7 +564,8 @@
       var c = $('#emp-contract').value;
       var hours = c === 'custom' ? +$('#emp-hours').value : +c;
       if (!(hours > 0)) return toast('Indica le ore settimanali');
-      state.employees.push({ id: newId(), name: name, weeklyHours: hours, has104: $('#emp-104').checked, active: true });
+      state.employees.push({ id: newId(), name: name, weeklyHours: hours, role: $('#emp-role').value,
+        has104: $('#emp-104').checked, active: true });
       $('#emp-104').checked = false;
       save();
       $('#emp-name').value = '';
@@ -556,6 +582,7 @@
       if (f === 'name') e.name = ev.target.value.trim() || e.name;
       if (f === 'active') e.active = ev.target.checked;
       if (f === 'has104') e.has104 = ev.target.checked;
+      if (f === 'role') e.role = ev.target.value;
       if (f === 'contract') {
         if (ev.target.value === 'custom') {
           tr.querySelector('.hours').hidden = false;
@@ -602,6 +629,7 @@
     f.staffN.value = state.settings.staffPerShift.N;
     f.perm104Hours.value = state.settings.perm104Hours;
     f.perm104PerMonth.value = state.settings.perm104PerMonth;
+    f.minDriversPerShift.value = state.settings.minDriversPerShift;
   }
 
   function initSettings() {
@@ -615,6 +643,8 @@
         ? +f.perm104Hours.value : R.DEFAULT_SETTINGS.perm104Hours;
       state.settings.perm104PerMonth = +f.perm104PerMonth.value >= 0 && f.perm104PerMonth.value !== ''
         ? +f.perm104PerMonth.value : R.DEFAULT_SETTINGS.perm104PerMonth;
+      state.settings.minDriversPerShift = f.minDriversPerShift.value !== '' && +f.minDriversPerShift.value >= 0
+        ? +f.minDriversPerShift.value : R.DEFAULT_SETTINGS.minDriversPerShift;
       save();
       renderAll();
       toast('Impostazioni salvate.');

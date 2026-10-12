@@ -82,6 +82,10 @@
         <h3>Aggiungi dipendente</h3>
         <form id="emp-form" class="row-form">
           <input id="emp-name" placeholder="Cognome e nome" required>
+          <select id="emp-role" aria-label="Qualifica">
+            <option value="autista">Autista soccorritore (con patente)</option>
+            <option value="soccorritore">Soccorritore (senza patente)</option>
+          </select>
           <select id="emp-contract">
             <option value="38">Tempo pieno (38 h/sett.)</option>
             <option value="24">Part-time (24 h/sett.)</option>
@@ -107,6 +111,7 @@
           <label>Riposo minimo tra due turni (ore) <input type="number" name="minRestHours" min="0" step="1"></label>
           <label>Persone richieste per turno giorno (7–19) <input type="number" name="staffG" min="0" step="1"></label>
           <label>Persone richieste per turno notte (19–7) <input type="number" name="staffN" min="0" step="1"></label>
+          <label>Autisti soccorritori minimi per turno <input type="number" name="minDriversPerShift" min="0" step="1"></label>
           <label>Ore di un permesso 104 <input type="number" name="perm104Hours" min="0" step="0.1"></label>
           <label>Permessi 104 al mese <input type="number" name="perm104PerMonth" min="0" step="1"></label>
           <button class="primary">Salva</button>
@@ -117,6 +122,8 @@
           Ferie e malattia nei giorni lun–ven valgono come ore svolte (stessa quota giornaliera).
           Ogni permesso 104 vale le ore indicate sopra, in qualsiasi giorno.
           La formazione conta come lavoro, anche nel massimo settimanale.
+          Ogni turno con personale deve avere almeno un autista soccorritore: la proposta automatica
+          mette prima l'autista e poi, se possibile, un soccorritore.
           La richiesta di non lavorare vale 0 ore e la proposta automatica non mette turni in quel giorno.
           Ogni turno conta nella settimana e nel mese in cui inizia.
         </p>

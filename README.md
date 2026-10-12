@@ -23,6 +23,8 @@ e non c'è un server con i dati.
   - almeno **11 ore** di riposo tra la fine di un turno e l'inizio del successivo.
     Il controllo vale anche a cavallo tra due mesi.
     In pratica non sono ammessi una `N` seguita da una `G` il giorno dopo, né `G` e `N` nello stesso giorno.
+  - **almeno un autista soccorritore** in ogni turno: ogni dipendente è *Autista soccorritore*
+    (con patente) oppure *Soccorritore* (senza patente). Gli autisti sono segnati con una **A** accanto al nome.
   - **permessi 104**: al massimo 3 nel mese di calendario e solo per chi ha diritto alla 104.
     Accanto al nome compare il contatore dei permessi usati (es. `104 · 2/3`).
 - **Monte ore mensile** per ogni dipendente:
@@ -32,9 +34,11 @@ e non c'è un server con i dati.
   Accanto al monte ore trovi le ore fatte e il saldo (+/−).
   Si può impostare anche un orario settimanale diverso, a scelta.
 - **Copertura**: conta quante persone ci sono in ogni turno rispetto a quelle richieste
-  (si impostano in *Impostazioni*, di default 2 di giorno e 2 di notte).
+  (2 di giorno e 2 di notte, modificabili in *Impostazioni*) e quanti autisti ci sono in ciascun turno.
 - **Proposta automatica**: riempie i turni scoperti senza toccare quelli già inseriti.
   Rispetta sempre i vincoli e dà la precedenza a chi è più indietro con il monte ore.
+  In ogni turno mette prima un autista soccorritore e poi, se possibile, un soccorritore,
+  così gli autisti restano disponibili per gli altri turni.
 - **Stampa** (A4 orizzontale) ed **esportazione CSV** per Excel.
 - **Backup**: i dati stanno nel browser. Con *Scarica backup* / *Carica backup* li salvi
   o li sposti su un altro computer.

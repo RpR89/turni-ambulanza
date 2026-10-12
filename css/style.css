@@ -190,6 +190,12 @@ main { padding: 16px 20px 40px; }
 .tool-group input { width: 64px; padding: 5px 6px; }
 .tag104 { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; font-size: 10px; font-weight: 600; background: var(--p-bg); color: var(--p-fg); vertical-align: 1px; }
 .tag104.full { background: var(--bad-bg); color: var(--bad); }
+.drv {
+  display: inline-block; width: 16px; height: 16px; margin-right: 6px; border-radius: 4px;
+  background: var(--accent); color: var(--accent-text); font-size: 10px; line-height: 16px;
+  text-align: center; vertical-align: 1px;
+}
+.grid tfoot tr:not(.drivers) + tr.drivers > * { border-top: 1px dashed var(--muted); }
 .check { display: inline-flex; align-items: center; gap: 6px; }
 .grid td.cell.error { box-shadow: inset 0 0 0 2px var(--bad); color: var(--bad); }
 

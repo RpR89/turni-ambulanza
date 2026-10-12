@@ -87,7 +87,7 @@ test('copertura: segnala turni scoperti', () => {
 test('la proposta automatica rispetta tutti i vincoli', () => {
   const employees = [];
   for (let i = 0; i < 12; i++) {
-    employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: i < 10 ? 38 : 24 });
+    employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: i < 10 ? 38 : 24, role: i % 2 ? 'soccorritore' : 'autista' });
   }
   const s = makeState(employees, { e0: { '2026-10-05': 'F', '2026-10-06': 'F' } });
   const res = R.generateMonth(s, 2026, 10);
@@ -138,7 +138,9 @@ test('formazione: conta come lavoro, anche nelle 48 h settimanali', () => {
 
 test('la proposta automatica rispetta richieste di riposo, formazione e permessi', () => {
   const employees = [];
-  for (let i = 0; i < 12; i++) employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: 38, has104: i === 0 });
+  for (let i = 0; i < 12; i++) {
+    employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: 38, has104: i === 0, role: i < 6 ? 'autista' : 'soccorritore' });
+  }
   const fixed = {
     e0: { '2026-10-07': 'P' },
     e1: { '2026-10-07': 'R', '2026-10-08': 'R' },
@@ -152,4 +154,43 @@ test('la proposta automatica rispetta richieste di riposo, formazione e permessi
   assert.equal(res.assignments.e0['2026-10-07'], 'P');
   const out = makeState(employees, res.assignments);
   assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+});
+
+const DRV = { id: 'd', name: 'Dario', weeklyHours: 38, role: 'autista' };
+const SOC = { id: 's', name: 'Sofia', weeklyHours: 38, role: 'soccorritore' };
+const SOC2 = { id: 't', name: 'Tina', weeklyHours: 38, role: 'soccorritore' };
+
+test('ogni turno con personale deve avere almeno un autista soccorritore', () => {
+  const s = makeState([DRV, SOC, SOC2], {
+    s: { '2026-10-12': 'G', '2026-10-13': 'N' },
+    t: { '2026-10-12': 'G' },
+    d: { '2026-10-13': 'N' }
+  });
+  const errs = R.validateMonth(s, 2026, 10).filter(i => i.type === 'driver');
+  assert.equal(errs.length, 1);
+  assert.deepEqual(errs[0].dates, ['2026-10-12']);
+  assert.deepEqual(errs[0].empIds.sort(), ['s', 't']);
+  assert.equal(errs[0].level, 'error');
+});
+
+test('la proposta automatica mette sempre un autista e poi preferisce i soccorritori', () => {
+  const employees = [];
+  for (let i = 0; i < 12; i++) {
+    employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: i < 10 ? 38 : 24, role: i < 5 ? 'autista' : 'soccorritore' });
+  }
+  const s = makeState(employees, {});
+  const res = R.generateMonth(s, 2026, 10);
+  const out = makeState(employees, res.assignments);
+  assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+  assert.equal(res.uncovered.length, 0);
+  R.monthDays(2026, 10).forEach(k => ['G', 'N'].forEach(c => {
+    assert.equal(R.staffOn(out, k, c).filter(R.isDriver).length, 1, k + ' ' + c);
+  }));
+});
+
+test('senza autisti disponibili il turno viene comunque coperto e segnalato', () => {
+  const s = makeState([SOC, SOC2], {}, { staffPerShift: { G: 2, N: 0 } });
+  const res = R.generateMonth(s, 2026, 10);
+  assert.ok(res.uncovered.some(u => u.driver));
+  assert.equal(R.staffOn(makeState([SOC, SOC2], res.assignments), '2026-10-01', 'G').length, 2);
 });

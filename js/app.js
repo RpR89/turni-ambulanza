@@ -554,7 +554,7 @@
 
   function initEmployees() {
     $('#emp-contract').addEventListener('change', function () {
-      $('#emp-hours').hidden = this.value !== 'custom';
+      $('#emp-hours-field').hidden = this.value !== 'custom';
     });
 
     $('#emp-form').addEventListener('submit', function (ev) {
@@ -564,7 +564,7 @@
       var c = $('#emp-contract').value;
       var hours = c === 'custom' ? +$('#emp-hours').value : +c;
       if (!(hours > 0)) return toast('Indica le ore settimanali');
-      state.employees.push({ id: newId(), name: name, weeklyHours: hours, role: $('#emp-role').value,
+      state.employees.push({ id: newId(), name: name, weeklyHours: hours, role: $('input[name="emp-role"]:checked').value,
         has104: $('#emp-104').checked, active: true });
       $('#emp-104').checked = false;
       save();

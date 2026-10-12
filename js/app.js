@@ -7,7 +7,7 @@
   var MONTHS = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio',
     'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
   var WEEKDAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
-  var CODES = ['G', 'N', 'F', 'M'];
+  var CODES = ['G', 'N', 'F', 'M', 'P', 'R', 'C'];
 
   // ---------- Stato ----------
 
@@ -35,7 +35,10 @@
     base.settings.staffPerShift = Object.assign({}, R.DEFAULT_SETTINGS.staffPerShift,
       (s.settings && s.settings.staffPerShift) || {});
     base.employees = s.employees.map(function (e) {
-      return { id: String(e.id), name: String(e.name || ''), weeklyHours: +e.weeklyHours || 38, active: e.active !== false };
+      return {
+        id: String(e.id), name: String(e.name || ''), weeklyHours: +e.weeklyHours || 38,
+        has104: !!e.has104, active: e.active !== false
+      };
     });
     base.assignments = s.assignments && typeof s.assignments === 'object' ? s.assignments : {};
     return base;
@@ -128,14 +131,44 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
   }
 
-  function setCell(empId, key, code) {
+  function trainingHours() {
+    var h = +$('#training-hours').value;
+    return h > 0 ? h : 8;
+  }
+
+  // Valore da salvare per un codice: la formazione porta con sé le ore.
+  function makeEntry(code) {
+    return code === 'C' ? { code: 'C', hours: trainingHours() } : code;
+  }
+
+  function sameEntry(a, b) { return JSON.stringify(a || '') === JSON.stringify(b || ''); }
+
+  function setCell(empId, key, entry) {
     if (!state.assignments[empId]) state.assignments[empId] = {};
-    if (code) state.assignments[empId][key] = code;
+    if (entry) state.assignments[empId][key] = entry;
     else delete state.assignments[empId][key];
   }
 
-  function getCell(empId, key) {
+  function getEntry(empId, key) {
     return (state.assignments[empId] || {})[key] || '';
+  }
+
+  function cellHtml(entry) {
+    var code = R.codeOf(entry);
+    if (code === 'C') return 'C<small>' + fmt(entry.hours) + 'h</small>';
+    if (code === 'P') return '104';
+    return code;
+  }
+
+  function cellText(entry) {
+    var code = R.codeOf(entry);
+    if (code === 'C') return 'C ' + fmt(entry.hours) + 'h';
+    if (code === 'P') return '104';
+    return code;
+  }
+
+  function perm104Count(empId) {
+    return R.monthDays(view.y, view.m).filter(function (k) { return R.codeOn(state, empId, k) === 'P'; }).length;
   }
 
   // ---------- Tabellone del mese ----------
@@ -174,31 +207,40 @@
       h += '<th class="day ' + cls + '"><span>' + WEEKDAYS[wd] + '</span>' + (+key.slice(8)) + '</th>';
     });
     h += '<th class="sum" title="Ore dei turni G e N">Turni<br>h</th>' +
-      '<th class="sum" title="Ferie e malattia nei giorni lun–ven">Ferie/<br>Mal. h</th>' +
+      '<th class="sum" title="Ore di formazione">Form.<br>h</th>' +
+      '<th class="sum" title="Ferie e malattia nei giorni lun–ven, permessi 104">Assenze<br>h</th>' +
       '<th class="sum" title="Giorni lun–ven × ore settimanali ÷ 5">Previste<br>h</th>' +
-      '<th class="sum" title="Turni + ferie/malattia − previste">Saldo<br>h</th></tr></thead><tbody>';
+      '<th class="sum" title="Turni + formazione + assenze − previste">Saldo<br>h</th></tr></thead><tbody>';
 
     if (!emps.length) {
-      h += '<tr><td class="empty" colspan="' + (days.length + 5) + '">Nessun dipendente: aggiungili nella scheda ' +
+      h += '<tr><td class="empty" colspan="' + (days.length + 6) + '">Nessun dipendente: aggiungili nella scheda ' +
         '<a href="#" data-goto="dipendenti">Dipendenti</a>.</td></tr>';
     }
 
     emps.forEach(function (e, row) {
       var s = R.monthSummary(state, e, view.y, view.m);
-      h += '<tr><th class="name" title="' + esc(contractLabel(e.weeklyHours)) + '">' + esc(e.name) +
+      var tag = '';
+      if (e.has104) {
+        var used = perm104Count(e.id), max = +state.settings.perm104PerMonth;
+        tag = ' <span class="tag104' + (used >= max ? ' full' : '') + '" title="Permessi 104 usati nel mese">104 · ' +
+          used + '/' + max + '</span>';
+      }
+      h += '<tr><th class="name" title="' + esc(contractLabel(e.weeklyHours)) + '">' + esc(e.name) + tag +
         (e.weeklyHours !== 38 ? ' <small>' + esc(contractLabel(e.weeklyHours)) + '</small>' : '') + '</th>';
       days.forEach(function (key, col) {
-        var code = getCell(e.id, key);
+        var entry = getEntry(e.id, key);
+        var code = R.codeOf(entry);
         var errs = cellErr[e.id + '|' + key];
         var wd = R.weekday(key);
         var cls = 'cell' + (code ? ' cell-' + code : '') + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
           '" data-date="' + key + '" data-row="' + row + '" data-col="' + col + '"' +
-          (errs ? ' title="' + esc(errs.join('\n')) + '"' : '') + '>' + code + '</td>';
+          (errs ? ' title="' + esc(errs.join('\n')) + '"' : '') + '>' + cellHtml(entry) + '</td>';
       });
       var bal = s.balance;
-      h += '<td class="sum">' + fmt(s.worked) + '</td><td class="sum">' + (s.absence ? fmt(s.absence) : '') +
+      h += '<td class="sum">' + fmt(s.worked) + '</td><td class="sum">' + (s.training ? fmt(s.training) : '') +
+        '</td><td class="sum">' + (s.absence ? fmt(s.absence) : '') +
         '</td><td class="sum">' + fmt(s.target) + '</td><td class="sum ' +
         (bal > 0 ? 'over' : bal < 0 ? 'under' : 'ok') + '">' + fmtSigned(bal) + '</td></tr>';
     });
@@ -214,7 +256,7 @@
           esc(R.staffOn(state, key, code)
             .map(function (e) { return e.name; }).join(', ') || 'Nessuno') + '">' + have + '</td>';
       });
-      h += '<td colspan="4"></td></tr>';
+      h += '<td colspan="5"></td></tr>';
     });
     h += '</tfoot>';
 
@@ -271,11 +313,24 @@
 
   var painting = null; // valore che si sta "dipingendo" trascinando il mouse
 
+  // Scrive il codice nella casella; false se non cambia nulla o non è ammesso.
   function applyToCell(td, code) {
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
-    if (getCell(emp, key) === code) return false;
-    setCell(emp, key, code);
+    var entry = makeEntry(code);
+    if (sameEntry(getEntry(emp, key), entry)) return false;
+    if (code === 'P' && !(empById(emp) || {}).has104) {
+      toast((empById(emp) || {}).name + ' non ha diritto alla 104: attivala nella scheda Dipendenti.', true);
+      return false;
+    }
+    setCell(emp, key, entry);
     return true;
+  }
+
+  function paintCell(td) {
+    var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
+    var code = R.codeOf(entry);
+    td.className = td.className.replace(/ ?cell-[A-Z]/g, '') + (code ? ' cell-' + code : '');
+    td.innerHTML = cellHtml(entry);
   }
 
   function commit(focusEmp, focusDate) {
@@ -306,21 +361,16 @@
       setRoving(td);
       td.focus();
       snapshot();
-      var cur = getCell(td.getAttribute('data-emp'), td.getAttribute('data-date'));
+      var cur = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
       // Cliccare una casella che contiene già il valore scelto la svuota.
-      painting = cur === tool ? '' : tool;
-      applyToCell(td, painting);
-      td.className = td.className.replace(/ ?cell-[A-Z]/g, '') + (painting ? ' cell-' + painting : '');
-      td.textContent = painting;
+      painting = sameEntry(cur, makeEntry(tool)) ? '' : tool;
+      if (applyToCell(td, painting)) paintCell(td);
     });
 
     grid.addEventListener('mouseover', function (ev) {
       if (painting === null) return;
       var td = ev.target.closest('td.cell');
-      if (td && applyToCell(td, painting)) {
-        td.className = td.className.replace(/ ?cell-[A-Z]/g, '') + (painting ? ' cell-' + painting : '');
-        td.textContent = painting;
-      }
+      if (td && applyToCell(td, painting)) paintCell(td);
     });
 
     document.addEventListener('mouseup', function () {
@@ -410,11 +460,11 @@
     var days = R.monthDays(view.y, view.m);
     var rows = [['Dipendente', 'Contratto'].concat(days.map(function (k) {
       return WEEKDAYS[R.weekday(k)] + ' ' + (+k.slice(8));
-    }), ['Ore turni', 'Ore ferie/malattia', 'Ore previste', 'Saldo'])];
+    }), ['Ore turni', 'Ore formazione', 'Ore assenze', 'Ore previste', 'Saldo'])];
     activeEmployees().forEach(function (e) {
       var s = R.monthSummary(state, e, view.y, view.m);
-      rows.push([e.name, contractLabel(e.weeklyHours)].concat(days.map(function (k) { return getCell(e.id, k); }),
-        [fmt(s.worked), fmt(s.absence), fmt(s.target), fmtSigned(s.balance)]));
+      rows.push([e.name, contractLabel(e.weeklyHours)].concat(days.map(function (k) { return cellText(getEntry(e.id, k)); }),
+        [fmt(s.worked), fmt(s.training), fmt(s.absence), fmt(s.target), fmtSigned(s.balance)]));
     });
     ['G', 'N'].forEach(function (code) {
       rows.push(['Copertura ' + code, ''].concat(days.map(function (k) {
@@ -454,8 +504,8 @@
 
   function renderEmployees() {
     var h = '<thead><tr><th></th><th>Nome</th><th>Contratto</th><th>Monte ore ' + MONTHS[view.m - 1].toLowerCase() +
-      '</th><th>Attivo</th><th></th></tr></thead><tbody>';
-    if (!state.employees.length) h += '<tr><td colspan="6" class="empty">Nessun dipendente inserito.</td></tr>';
+      '</th><th>Legge 104</th><th>Attivo</th><th></th></tr></thead><tbody>';
+    if (!state.employees.length) h += '<tr><td colspan="7" class="empty">Nessun dipendente inserito.</td></tr>';
     state.employees.forEach(function (e, i) {
       var std = e.weeklyHours === 38 || e.weeklyHours === 24;
       h += '<tr data-id="' + esc(e.id) + '">' +
@@ -469,6 +519,8 @@
         '<input data-field="hours" type="number" min="1" max="48" step="0.5" value="' + e.weeklyHours + '"' +
         (std ? ' hidden' : '') + ' class="hours"></td>' +
         '<td>' + fmt(R.monthlyTarget(e, view.y, view.m)) + ' h</td>' +
+        '<td><label class="check"><input type="checkbox" data-field="has104"' + (e.has104 ? ' checked' : '') +
+        '> Sì</label></td>' +
         '<td><input type="checkbox" data-field="active"' + (e.active ? ' checked' : '') + '></td>' +
         '<td><button data-act="delete" class="danger">Elimina</button></td></tr>';
     });
@@ -487,7 +539,8 @@
       var c = $('#emp-contract').value;
       var hours = c === 'custom' ? +$('#emp-hours').value : +c;
       if (!(hours > 0)) return toast('Indica le ore settimanali');
-      state.employees.push({ id: newId(), name: name, weeklyHours: hours, active: true });
+      state.employees.push({ id: newId(), name: name, weeklyHours: hours, has104: $('#emp-104').checked, active: true });
+      $('#emp-104').checked = false;
       save();
       $('#emp-name').value = '';
       $('#emp-name').focus();
@@ -502,6 +555,7 @@
       var f = ev.target.getAttribute('data-field');
       if (f === 'name') e.name = ev.target.value.trim() || e.name;
       if (f === 'active') e.active = ev.target.checked;
+      if (f === 'has104') e.has104 = ev.target.checked;
       if (f === 'contract') {
         if (ev.target.value === 'custom') {
           tr.querySelector('.hours').hidden = false;
@@ -546,6 +600,8 @@
     f.minRestHours.value = state.settings.minRestHours;
     f.staffG.value = state.settings.staffPerShift.G;
     f.staffN.value = state.settings.staffPerShift.N;
+    f.perm104Hours.value = state.settings.perm104Hours;
+    f.perm104PerMonth.value = state.settings.perm104PerMonth;
   }
 
   function initSettings() {
@@ -555,6 +611,10 @@
       state.settings.maxWeeklyHours = +f.maxWeeklyHours.value || R.DEFAULT_SETTINGS.maxWeeklyHours;
       state.settings.minRestHours = +f.minRestHours.value >= 0 ? +f.minRestHours.value : R.DEFAULT_SETTINGS.minRestHours;
       state.settings.staffPerShift = { G: Math.max(0, +f.staffG.value || 0), N: Math.max(0, +f.staffN.value || 0) };
+      state.settings.perm104Hours = +f.perm104Hours.value >= 0 && f.perm104Hours.value !== ''
+        ? +f.perm104Hours.value : R.DEFAULT_SETTINGS.perm104Hours;
+      state.settings.perm104PerMonth = +f.perm104PerMonth.value >= 0 && f.perm104PerMonth.value !== ''
+        ? +f.perm104PerMonth.value : R.DEFAULT_SETTINGS.perm104PerMonth;
       save();
       renderAll();
       toast('Impostazioni salvate.');
@@ -595,6 +655,7 @@
     $all('.tool').forEach(function (b) {
       b.addEventListener('click', function () { selectTool(b.getAttribute('data-tool')); });
     });
+    $('#training-hours').addEventListener('focus', function () { selectTool('C'); });
     $('#prev-month').addEventListener('click', function () { changeMonth(-1); });
     $('#next-month').addEventListener('click', function () { changeMonth(1); });
     $('#today').addEventListener('click', function () {

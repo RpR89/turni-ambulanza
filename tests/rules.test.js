@@ -103,3 +103,53 @@ test('la proposta automatica rispetta tutti i vincoli', () => {
   const pt = R.monthSummary(out, employees[11], 2026, 10);
   assert.ok(pt.worked < ft.worked + ft.absence);
 });
+
+test('permessi 104: valgono 7,6 h ciascuno, solo per chi ha diritto, massimo 3 al mese', () => {
+  const emp104 = { id: 'c', name: 'Carla', weeklyHours: 38, has104: true };
+  const s = makeState([emp104, FT], {
+    c: { '2026-10-05': 'P', '2026-10-12': 'P', '2026-10-17': 'P' },
+    a: { '2026-10-05': 'P' }
+  });
+  assert.equal(R.monthSummary(s, emp104, 2026, 10).absence, 22.8); // anche di sabato
+  let errs = R.validateMonth(s, 2026, 10).filter(i => i.type === 'perm104');
+  assert.equal(errs.length, 1);
+  assert.equal(errs[0].empId, 'a'); // Anna non ha la 104
+
+  s.assignments.c['2026-10-20'] = 'P';
+  errs = R.validateMonth(s, 2026, 10).filter(i => i.type === 'perm104' && i.empId === 'c');
+  assert.equal(errs.length, 1);
+  assert.deepEqual(errs[0].dates, ['2026-10-20']);
+  // il conteggio riparte ogni mese
+  s.assignments.c['2026-11-02'] = 'P';
+  assert.equal(R.validateMonth(s, 2026, 11).filter(i => i.type === 'perm104').length, 0);
+});
+
+test('formazione: conta come lavoro, anche nelle 48 h settimanali', () => {
+  const a = { '2026-10-12': 'G', '2026-10-13': 'G', '2026-10-14': 'G', '2026-10-16': { code: 'C', hours: 6 } };
+  const s = makeState([FT], { a });
+  const sum = R.monthSummary(s, FT, 2026, 10);
+  assert.equal(sum.worked, 36);
+  assert.equal(sum.training, 6);
+  assert.equal(sum.balance, Math.round((42 - 167.2) * 10) / 10);
+  assert.equal(R.weekHours(s, 'a', '2026-10-12'), 42);
+  assert.equal(R.blockers(s, 'a', '2026-10-17', 'G').length, 1); // 54 h > 48
+  assert.equal(R.staffOn(s, '2026-10-16', 'G').length, 0);
+});
+
+test('la proposta automatica rispetta richieste di riposo, formazione e permessi', () => {
+  const employees = [];
+  for (let i = 0; i < 12; i++) employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: 38, has104: i === 0 });
+  const fixed = {
+    e0: { '2026-10-07': 'P' },
+    e1: { '2026-10-07': 'R', '2026-10-08': 'R' },
+    e2: { '2026-10-07': { code: 'C', hours: 8 } }
+  };
+  const s = makeState(employees, JSON.parse(JSON.stringify(fixed)));
+  const res = R.generateMonth(s, 2026, 10);
+  assert.deepEqual(res.assignments.e1['2026-10-07'], 'R');
+  assert.deepEqual(res.assignments.e1['2026-10-08'], 'R');
+  assert.deepEqual(res.assignments.e2['2026-10-07'], { code: 'C', hours: 8 });
+  assert.equal(res.assignments.e0['2026-10-07'], 'P');
+  const out = makeState(employees, res.assignments);
+  assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+});

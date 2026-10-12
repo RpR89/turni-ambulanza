@@ -34,6 +34,12 @@
           <button class="tool cell-N" data-tool="N" title="Turno notte 19–7 (tasto N)">N <small>19–7</small></button>
           <button class="tool cell-F" data-tool="F" title="Ferie (tasto F)">F <small>ferie</small></button>
           <button class="tool cell-M" data-tool="M" title="Malattia (tasto M)">M <small>malattia</small></button>
+          <button class="tool cell-P" data-tool="P" title="Permesso Legge 104 (tasto P)">P <small>104</small></button>
+          <button class="tool cell-R" data-tool="R" title="Richiesta di non lavorare (tasto R)">R <small>non lavora</small></button>
+          <span class="tool-group">
+            <button class="tool cell-C" data-tool="C" title="Formazione con le ore indicate (tasto C)">C <small>formazione</small></button>
+            <input id="training-hours" type="number" min="0.5" max="24" step="0.5" value="8" title="Ore di formazione" aria-label="Ore di formazione"><small>h</small>
+          </span>
           <button class="tool cell-clear" data-tool="" title="Cancella (tasto Canc)">✕ <small>cancella</small></button>
         </div>
 
@@ -54,7 +60,7 @@
 
       <p class="hint no-print">
         Scegli cosa inserire e clicca sulle caselle (puoi anche trascinare). Da tastiera: frecce per muoverti,
-        <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> per scrivere, <kbd>Canc</kbd> per cancellare.
+        <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd> per scrivere, <kbd>Canc</kbd> per cancellare.
         Le caselle rosse violano un vincolo: passa sopra con il mouse per il dettaglio.
       </p>
 
@@ -82,6 +88,7 @@
             <option value="custom">Altro…</option>
           </select>
           <input id="emp-hours" type="number" min="1" max="48" step="0.5" placeholder="h/sett." hidden>
+          <label class="check"><input id="emp-104" type="checkbox"> Ha diritto alla 104</label>
           <button class="primary">Aggiungi</button>
         </form>
       </div>
@@ -100,12 +107,17 @@
           <label>Riposo minimo tra due turni (ore) <input type="number" name="minRestHours" min="0" step="1"></label>
           <label>Persone richieste per turno giorno (7–19) <input type="number" name="staffG" min="0" step="1"></label>
           <label>Persone richieste per turno notte (19–7) <input type="number" name="staffN" min="0" step="1"></label>
+          <label>Ore di un permesso 104 <input type="number" name="perm104Hours" min="0" step="0.1"></label>
+          <label>Permessi 104 al mese <input type="number" name="perm104PerMonth" min="0" step="1"></label>
           <button class="primary">Salva</button>
         </form>
         <p class="note">
           Monte ore mensile = giorni dal lunedì al venerdì del mese × (ore settimanali ÷ 5):
           7,6 h per il tempo pieno da 38 h, 4,8 h per il part-time da 24 h.
           Ferie e malattia nei giorni lun–ven valgono come ore svolte (stessa quota giornaliera).
+          Ogni permesso 104 vale le ore indicate sopra, in qualsiasi giorno.
+          La formazione conta come lavoro, anche nel massimo settimanale.
+          La richiesta di non lavorare vale 0 ore e la proposta automatica non mette turni in quel giorno.
           Ogni turno conta nella settimana e nel mese in cui inizia.
         </p>
       </div>

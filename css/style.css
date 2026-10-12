@@ -12,6 +12,9 @@
   --n-bg: #d6e4ff; --n-fg: #1a3d8f;
   --f-bg: #d8f3dc; --f-fg: #1b5e20;
   --m-bg: #ede0f7; --m-fg: #5b2a86;
+  --p-bg: #ffe0cc; --p-fg: #8a3b00;
+  --r-bg: #e4e7ec; --r-fg: #475467;
+  --c-bg: #d3f1f1; --c-fg: #0b5c5c;
 
   --bad: #c62828; --bad-bg: #fde7e7;
   --warn: #9a6200; --warn-bg: #fff1d6;
@@ -31,6 +34,9 @@
     --n-bg: #1f3260; --n-fg: #b9cdff;
     --f-bg: #1f4226; --f-fg: #b5e8bd;
     --m-bg: #3c2853; --m-fg: #dcc3f4;
+    --p-bg: #4d2c14; --p-fg: #ffc59e;
+    --r-bg: #343a46; --r-fg: #c3c9d4;
+    --c-bg: #123f40; --c-fg: #a6e6e6;
     --bad: #ff8a80; --bad-bg: #4a1f1f;
     --warn: #ffcc80; --warn-bg: #45351a;
     --good: #a5d6a7; --good-bg: #1f3a22;
@@ -175,6 +181,16 @@ main { padding: 16px 20px 40px; }
 .cell-N { background: var(--n-bg) !important; color: var(--n-fg); }
 .cell-F { background: var(--f-bg) !important; color: var(--f-fg); }
 .cell-M { background: var(--m-bg) !important; color: var(--m-fg); }
+.cell-P { background: var(--p-bg) !important; color: var(--p-fg); }
+.cell-R { background: var(--r-bg) !important; color: var(--r-fg); }
+.cell-C { background: var(--c-bg) !important; color: var(--c-fg); }
+.grid td.cell-P { font-size: 10px; }
+.grid td.cell small { display: block; font-size: 9px; font-weight: 600; line-height: 1; }
+.tool-group { display: inline-flex; align-items: center; gap: 4px; }
+.tool-group input { width: 64px; padding: 5px 6px; }
+.tag104 { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; font-size: 10px; font-weight: 600; background: var(--p-bg); color: var(--p-fg); vertical-align: 1px; }
+.tag104.full { background: var(--bad-bg); color: var(--bad); }
+.check { display: inline-flex; align-items: center; gap: 6px; }
 .grid td.cell.error { box-shadow: inset 0 0 0 2px var(--bad); color: var(--bad); }
 
 .grid td.sum { padding: 0 8px; font-variant-numeric: tabular-nums; min-width: 60px; }

@@ -19,11 +19,26 @@
     M: { code: 'M', label: 'Malattia' }
   };
 
+  /*
+   * Altre voci inseribili a mano:
+   *  P = permesso Legge 104 (ore fisse, solo per chi ne ha diritto, max N al mese)
+   *  R = richiesta di non lavorare (0 ore, la proposta automatica la rispetta)
+   *  C = formazione/corso, con le ore indicate: conta come lavoro, anche nelle 48 h
+   * Nell'archivio la formazione è { code: 'C', hours: 6 }, tutte le altre voci una stringa.
+   */
+  var OTHER = {
+    P: { code: 'P', label: 'Permesso 104' },
+    R: { code: 'R', label: 'Richiesta di non lavorare' },
+    C: { code: 'C', label: 'Formazione' }
+  };
+
   var DEFAULT_SETTINGS = {
     maxWeeklyHours: 48,
     minRestHours: 11,
     fullTimeWeeklyHours: 38,
-    staffPerShift: { G: 2, N: 2 }
+    staffPerShift: { G: 2, N: 2 },
+    perm104Hours: 7.6,
+    perm104PerMonth: 3
   };
 
   // ---------- Date (sempre in UTC, così l'ora legale non sposta i giorni) ----------
@@ -101,37 +116,57 @@
     return (state.assignments && state.assignments[empId]) || {};
   }
 
+  function codeOf(entry) {
+    if (!entry) return '';
+    return typeof entry === 'string' ? entry : entry.code;
+  }
+
+  function codeOn(state, empId, key) { return codeOf(empAssignments(state, empId)[key]); }
+
+  // Ore di lavoro effettivo del giorno: turni e formazione.
   // Un turno appartiene al giorno (e quindi a settimana e mese) in cui inizia.
-  function shiftHoursOn(state, empId, key) {
-    var s = SHIFTS[empAssignments(state, empId)[key]];
-    return s ? s.hours : 0;
+  function workHoursOn(state, empId, key) {
+    var entry = empAssignments(state, empId)[key];
+    var code = codeOf(entry);
+    if (SHIFTS[code]) return SHIFTS[code].hours;
+    if (code === 'C') return +entry.hours || 0;
+    return 0;
+  }
+
+  function settingNum(state, name) {
+    var s = state.settings || {};
+    return s[name] != null ? +s[name] : DEFAULT_SETTINGS[name];
   }
 
   function monthSummary(state, emp, y, m) {
     var a = empAssignments(state, emp.id);
-    var worked = 0, absence = 0, counts = { G: 0, N: 0, F: 0, M: 0 };
+    var worked = 0, training = 0, absence = 0, counts = { G: 0, N: 0, F: 0, M: 0, P: 0, R: 0, C: 0 };
     monthDays(y, m).forEach(function (key) {
-      var code = a[key];
+      var code = codeOf(a[key]);
       if (!code) return;
       counts[code] = (counts[code] || 0) + 1;
       if (SHIFTS[code]) worked += SHIFTS[code].hours;
+      else if (code === 'C') training += workHoursOn(state, emp.id, key);
+      else if (code === 'P') absence += settingNum(state, 'perm104Hours');
       else if (ABSENCES[code] && isWorkingDay(key)) absence += dailyHours(emp);
     });
     var target = monthlyTarget(emp, y, m);
     absence = round1(absence);
+    training = round1(training);
     return {
       worked: worked,
+      training: training,
       absence: absence,
       target: target,
-      balance: round1(worked + absence - target),
+      balance: round1(worked + training + absence - target),
       counts: counts
     };
   }
 
   function weekHours(state, empId, monday) {
     var tot = 0;
-    for (var i = 0; i < 7; i++) tot += shiftHoursOn(state, empId, addDays(monday, i));
-    return tot;
+    for (var i = 0; i < 7; i++) tot += workHoursOn(state, empId, addDays(monday, i));
+    return round1(tot);
   }
 
   // ---------- Vincoli ----------
@@ -149,7 +184,7 @@
     var out = [];
     for (var n = dayNumber(fromKey); n <= dayNumber(toKey_); n++) {
       var key = keyFromDayNumber(n);
-      if (SHIFTS[a[key]]) out.push({ key: key, code: a[key] });
+      if (SHIFTS[codeOf(a[key])]) out.push({ key: key, code: codeOf(a[key]) });
     }
     return out;
   }
@@ -183,7 +218,7 @@
     });
 
     var monday = weekStart(key);
-    var hours = weekHours(state, empId, monday) - shiftHoursOn(state, empId, key) + SHIFTS[code].hours;
+    var hours = round1(weekHours(state, empId, monday) - workHoursOn(state, empId, key) + SHIFTS[code].hours);
     if (hours > cfg.maxWeeklyHours) {
       reasons.push(hours + ' h nella settimana dal ' + monday + ' (massimo ' + cfg.maxWeeklyHours + ' h)');
     }
@@ -222,7 +257,10 @@
       monthWeeks(y, m).forEach(function (monday) {
         var h = weekHours(state, emp.id, monday);
         if (h > cfg.maxWeeklyHours) {
-          var dates = shiftsBetween(state, emp.id, monday, addDays(monday, 6)).map(function (s) { return s.key; });
+          var dates = [];
+          for (var d = 0; d < 7; d++) {
+            if (workHoursOn(state, emp.id, addDays(monday, d))) dates.push(addDays(monday, d));
+          }
           issues.push({
             level: 'error', type: 'week', empId: emp.id, dates: dates, week: monday,
             message: h + ' h nella settimana dal ' + monday + ' al ' + addDays(monday, 6) +
@@ -230,6 +268,21 @@
           });
         }
       });
+
+      // Permessi 104: solo per chi ne ha diritto e al massimo N nel mese.
+      var perms = days.filter(function (k) { return codeOn(state, emp.id, k) === 'P'; });
+      var maxPerm = settingNum(state, 'perm104PerMonth');
+      if (perms.length && !emp.has104) {
+        issues.push({
+          level: 'error', type: 'perm104', empId: emp.id, dates: perms,
+          message: 'Permessi 104 inseriti ma il dipendente non risulta avere diritto alla 104'
+        });
+      } else if (perms.length > maxPerm) {
+        issues.push({
+          level: 'error', type: 'perm104', empId: emp.id, dates: perms.slice(maxPerm),
+          message: perms.length + ' permessi 104 nel mese (massimo ' + maxPerm + ')'
+        });
+      }
     });
 
     days.forEach(function (key) {
@@ -256,7 +309,7 @@
 
   function staffOn(state, key, code) {
     return activeOf(state).filter(function (e) {
-      return empAssignments(state, e.id)[key] === code;
+      return codeOn(state, e.id, key) === code;
     });
   }
 
@@ -280,7 +333,7 @@
       if (!work.assignments[e.id]) work.assignments[e.id] = {};
       var s = monthSummary(work, e, y, m);
       target[e.id] = s.target;
-      done[e.id] = s.worked + s.absence;
+      done[e.id] = s.worked + s.training + s.absence;
     });
 
     var uncovered = [];
@@ -319,6 +372,10 @@
   var Rules = {
     SHIFTS: SHIFTS,
     ABSENCES: ABSENCES,
+    OTHER: OTHER,
+    codeOf: codeOf,
+    codeOn: codeOn,
+    workHoursOn: workHoursOn,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     toKey: toKey,
     addDays: addDays,

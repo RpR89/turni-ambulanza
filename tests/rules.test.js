@@ -95,7 +95,7 @@ test('la proposta automatica rispetta tutti i vincoli', () => {
   const issues = R.validateMonth(out, 2026, 10);
   assert.equal(issues.filter(i => i.level === 'error').length, 0);
   assert.equal(res.uncovered.length, 0);
-  assert.equal(issues.length, 0);
+  assert.equal(issues.filter(i => i.level === 'warning').length, 0);
   // non sovrascrive quanto già inserito
   assert.equal(res.assignments.e0['2026-10-05'], 'F');
   // il part-time lavora meno del tempo pieno
@@ -193,4 +193,54 @@ test('senza autisti disponibili il turno viene comunque coperto e segnalato', ()
   const res = R.generateMonth(s, 2026, 10);
   assert.ok(res.uncovered.some(u => u.driver));
   assert.equal(R.staffOn(makeState([SOC, SOC2], res.assignments), '2026-10-01', 'G').length, 2);
+});
+
+test('da evitare: 3 turni uguali di fila (G G N e G N N vanno bene)', () => {
+  const s = makeState([FT], { a: {
+    '2026-10-05': 'G', '2026-10-06': 'G', '2026-10-07': 'N',
+    '2026-10-12': 'G', '2026-10-13': 'N', '2026-10-14': 'N',
+    '2026-10-19': 'N', '2026-10-20': 'N', '2026-10-21': 'N'
+  } });
+  const soft = R.validateMonth(s, 2026, 10).filter(i => i.type === 'sequence');
+  assert.equal(soft.length, 1);
+  assert.equal(soft[0].level, 'soft');
+  assert.deepEqual(soft[0].dates, ['2026-10-19', '2026-10-20', '2026-10-21']);
+  assert.deepEqual(R.softBlockers(s, 'a', '2026-10-08', 'G'), []);
+  assert.equal(R.softBlockers(s, 'a', '2026-10-15', 'N').length, 1);
+});
+
+test('weekend: conta anche solo il sabato o solo la domenica, massimo 2 al mese', () => {
+  const s = makeState([FT], { a: { '2026-10-03': 'G', '2026-10-11': 'N', '2026-10-17': 'G', '2026-10-18': 'G' } });
+  assert.equal(R.monthSummary(s, FT, 2026, 10).weekends, 3);
+  const soft = R.validateMonth(s, 2026, 10).filter(i => i.type === 'weekends');
+  assert.equal(soft.length, 1);
+  assert.deepEqual(soft[0].dates, ['2026-10-03', '2026-10-11', '2026-10-17', '2026-10-18']);
+  // ferie nel weekend non contano come weekend lavorato
+  const s2 = makeState([FT], { a: { '2026-10-03': 'F', '2026-10-10': 'G' } });
+  assert.equal(R.monthSummary(s2, FT, 2026, 10).weekends, 1);
+  // un altro giorno dello stesso weekend non ne consuma uno nuovo
+  const s3 = makeState([FT], { a: { '2026-10-03': 'G', '2026-10-10': 'G' } });
+  assert.deepEqual(R.softBlockers(s3, 'a', '2026-10-11', 'G'), []);
+  assert.equal(R.softBlockers(s3, 'a', '2026-10-17', 'G').length, 1);
+});
+
+test('la proposta automatica equilibra notti e weekend e supera le regole solo se serve', () => {
+  [[2026, 11], [2026, 12], [2027, 2]].forEach(([y, m]) => {
+    const employees = [];
+    for (let i = 0; i < 12; i++) {
+      employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: i < 10 ? 38 : 24, role: i < 6 ? 'autista' : 'soccorritore' });
+    }
+    const s = makeState(employees, {});
+    const res = R.generateMonth(s, y, m);
+    const out = makeState(employees, res.assignments);
+    const issues = R.validateMonth(out, y, m);
+    assert.equal(issues.filter(i => i.level === 'error').length, 0);
+    // ogni regola superata dalla proposta è dichiarata
+    assert.ok(issues.filter(i => i.level === 'soft').length <= res.bypassed.length);
+    assert.ok(res.bypassed.length <= 2, y + '-' + m + ': ' + res.bypassed.length + ' eccezioni');
+    const full = employees.slice(0, 10).map(e => R.monthSummary(out, e, y, m));
+    const nights = full.map(x => x.nights);
+    assert.ok(Math.max(...nights) - Math.min(...nights) <= 2, 'notti ' + nights);
+    full.forEach(x => assert.ok(x.weekends <= 3));
+  });
 });

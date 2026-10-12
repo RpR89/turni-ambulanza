@@ -39,7 +39,9 @@
     staffPerShift: { G: 2, N: 2 },
     perm104Hours: 7.6,
     perm104PerMonth: 3,
-    minDriversPerShift: 1
+    minDriversPerShift: 1,
+    maxSameInRow: 2,
+    maxWeekendsPerMonth: 2
   };
 
   // Qualifiche: l'autista soccorritore ha la patente per guidare l'ambulanza.
@@ -168,7 +170,9 @@
       absence: absence,
       target: target,
       balance: round1(worked + training + absence - target),
-      counts: counts
+      counts: counts,
+      nights: counts.N,
+      weekends: weekendsWorked(state, emp.id, y, m).length
     };
   }
 
@@ -176,6 +180,69 @@
     var tot = 0;
     for (var i = 0; i < 7; i++) tot += workHoursOn(state, empId, addDays(monday, i));
     return round1(tot);
+  }
+
+  // ---------- Weekend, sequenze ed equilibrio ----------
+
+  // Weekend del mese: sabato e domenica della stessa settimana, solo i giorni dentro il mese.
+  function monthWeekends(y, m) {
+    var groups = {};
+    var order = [];
+    monthDays(y, m).forEach(function (key) {
+      if (weekday(key) < 5) return;
+      var w = weekStart(key);
+      if (!groups[w]) { groups[w] = []; order.push(w); }
+      groups[w].push(key);
+    });
+    return order.map(function (w) { return { week: w, days: groups[w] }; });
+  }
+
+  // Weekend del mese in cui il dipendente fa almeno un turno (basta il sabato o la domenica).
+  function weekendsWorked(state, empId, y, m) {
+    return monthWeekends(y, m).filter(function (we) {
+      return we.days.some(function (k) { return SHIFTS[codeOn(state, empId, k)]; });
+    });
+  }
+
+  // Lunghezza della serie di turni uguali consecutivi che si avrebbe mettendo `code` il giorno `key`.
+  function sameRunWith(state, empId, key, code) {
+    var n = 1, d;
+    for (d = addDays(key, -1); codeOn(state, empId, d) === code; d = addDays(d, -1)) n++;
+    for (d = addDays(key, 1); codeOn(state, empId, d) === code; d = addDays(d, 1)) n++;
+    return n;
+  }
+
+  // Giorni consecutivi di turno che terminano il giorno prima di `key`.
+  function streakBefore(state, empId, key) {
+    var n = 0;
+    for (var d = addDays(key, -1); SHIFTS[codeOn(state, empId, d)]; d = addDays(d, -1)) n++;
+    return n;
+  }
+
+  // Peso del contratto per confrontare notti e weekend: part-time 24 h → 24/38.
+  function contractWeight(state, emp) {
+    return (emp.weeklyHours || 38) / settingNum(state, 'fullTimeWeeklyHours');
+  }
+
+  /*
+   * Regole "da evitare" (superabili solo se non c'è alternativa) violate mettendo
+   * `code` il giorno `key`: più di 2 turni uguali di fila, più di 2 weekend nel mese.
+   */
+  function softBlockers(state, empId, key, code) {
+    var reasons = [];
+    var maxRow = settingNum(state, 'maxSameInRow');
+    var run = sameRunWith(state, empId, key, code);
+    if (run > maxRow) reasons.push(run + ' turni ' + code + ' di fila');
+    if (weekday(key) >= 5) {
+      var p = parseKey(key);
+      var worked = weekendsWorked(state, empId, p.y, p.m);
+      var w = weekStart(key);
+      var already = worked.some(function (we) { return we.week === w; });
+      if (!already && worked.length >= settingNum(state, 'maxWeekendsPerMonth')) {
+        reasons.push((worked.length + 1) + ' weekend nel mese');
+      }
+    }
+    return reasons;
   }
 
   // ---------- Vincoli ----------
@@ -278,6 +345,41 @@
         }
       });
 
+      // Da evitare: più di N turni uguali di fila (anche a cavallo dei mesi).
+      var maxRow = settingNum(state, 'maxSameInRow');
+      var seq = shiftsBetween(state, emp.id, addDays(first, -7), addDays(last, 7));
+      var run = [];
+      function flush() {
+        if (run.length > maxRow && run.some(function (r) { return r.key >= first && r.key <= last; })) {
+          issues.push({
+            level: 'soft', type: 'sequence', empId: emp.id,
+            dates: run.map(function (r) { return r.key; }),
+            message: run.length + ' turni ' + run[0].code + ' di fila dal ' + run[0].key +
+              ' (da evitare più di ' + maxRow + ')'
+          });
+        }
+      }
+      seq.forEach(function (sh) {
+        var prev = run[run.length - 1];
+        if (prev && prev.code === sh.code && addDays(prev.key, 1) === sh.key) run.push(sh);
+        else { flush(); run = [sh]; }
+      });
+      flush();
+
+      // Da evitare: più di N weekend lavorati nel mese.
+      var maxWe = settingNum(state, 'maxWeekendsPerMonth');
+      var weList = weekendsWorked(state, emp.id, y, m);
+      if (weList.length > maxWe) {
+        var weDates = [];
+        weList.forEach(function (we) {
+          we.days.forEach(function (k) { if (SHIFTS[codeOn(state, emp.id, k)]) weDates.push(k); });
+        });
+        issues.push({
+          level: 'soft', type: 'weekends', empId: emp.id, dates: weDates,
+          message: weList.length + ' weekend lavorati nel mese (da evitare più di ' + maxWe + ')'
+        });
+      }
+
       // Permessi 104: solo per chi ne ha diritto e al massimo N nel mese.
       var perms = days.filter(function (k) { return codeOn(state, emp.id, k) === 'P'; });
       var maxPerm = settingNum(state, 'perm104PerMonth');
@@ -338,9 +440,19 @@
 
   /*
    * Riempie i turni scoperti del mese senza toccare quello che è già inserito.
-   * Rispetta sempre riposo minimo e massimo settimanale; a parità sceglie chi
-   * è più indietro rispetto al proprio monte ore mensile.
-   * Restituisce un nuovo oggetto assignments e la lista dei turni rimasti scoperti.
+   *
+   * Vincoli rigidi (mai superati): riposo minimo, massimo settimanale, voce già presente nel giorno.
+   * Regole da evitare (superate solo se nessun altro può coprire il posto): più di 2 turni
+   * uguali di fila, più di 2 weekend nel mese.
+   * Tra i candidati validi sceglie, in ordine:
+   *  1. chi non supera il proprio monte ore;
+   *  2. nel weekend, chi lavora già quel weekend (così se ne consumano meno), poi chi ne ha fatti meno;
+   *  3. chi non arriverebbe al 4° giorno di lavoro di fila (blocchi G G N, G N N);
+   *  4. per le notti, chi ne ha fatte meno (in proporzione al contratto);
+   *  5. a autista già presente, un soccorritore, se non è molto più avanti con le ore;
+   *  6. chi continua un blocco di lavoro invece di iniziarne uno nuovo;
+   *  7. chi è più indietro con il monte ore.
+   * Restituisce le nuove assegnazioni, i posti rimasti scoperti e le regole superate.
    */
   function generateMonth(state, y, m) {
     var cfg = settingsOf(state);
@@ -350,16 +462,21 @@
       assignments: JSON.parse(JSON.stringify(state.assignments || {}))
     };
     var minDrivers = settingNum(state, 'minDriversPerShift');
-    var target = {}, done = {};
+    var target = {}, done = {}, nights = {}, weight = {};
     work.employees.forEach(function (e) {
       if (!work.assignments[e.id]) work.assignments[e.id] = {};
       var s = monthSummary(work, e, y, m);
       target[e.id] = s.target;
       done[e.id] = s.worked + s.training + s.absence;
+      nights[e.id] = s.nights;
+      weight[e.id] = contractWeight(state, e) || 1;
     });
 
     var uncovered = [];
+    var bypassed = [];
     monthDays(y, m).forEach(function (key) {
+      var weekend = weekday(key) >= 5;
+      var wStart = weekStart(key);
       ['G', 'N'].forEach(function (code) {
         var staffed = staffOn(work, key, code);
         var need = (+cfg.staffPerShift[code] || 0) - staffed.length;
@@ -379,29 +496,193 @@
             uncovered.push({ date: key, shift: code, missing: need });
             break;
           }
+
+          // Le regole da evitare si superano solo se non c'è nessun'altra possibilità.
+          var soft = {};
+          candidates.forEach(function (e) { soft[e.id] = softBlockers(work, e.id, key, code); });
+          var clean = candidates.filter(function (e) { return !soft[e.id].length; });
+          if (clean.length) candidates = clean;
+
+          var info = {};
+          candidates.forEach(function (e) {
+            var we = weekend ? weekendsWorked(work, e.id, y, m) : [];
+            var streak = streakBefore(work, e.id, key);
+            info[e.id] = {
+              ratio: target[e.id] ? done[e.id] / target[e.id] : Infinity,
+              over: done[e.id] + SHIFTS[code].hours > target[e.id] ? 1 : 0,
+              inWeekend: we.some(function (w) { return w.week === wStart; }) ? 0 : 1,
+              weekends: we.length / weight[e.id],
+              nights: nights[e.id] / weight[e.id],
+              // -1 continua un blocco di 1-2 giorni, +1 sarebbe il 4° giorno di fila, 0 altrimenti
+              pattern: streak >= 3 ? 1 : streak >= 1 ? -1 : 0
+            };
+          });
           var preferNonDrivers = driversNeeded === 0;
           candidates.sort(function (a, b) {
-            // Prima chi non ha ancora raggiunto il monte ore; poi, a autista già coperto,
-            // i soccorritori (gli autisti servono negli altri turni); infine il più indietro.
-            var ra = target[a.id] ? done[a.id] / target[a.id] : Infinity;
-            var rb = target[b.id] ? done[b.id] / target[b.id] : Infinity;
-            var oa = done[a.id] + SHIFTS[code].hours > target[a.id] ? 1 : 0;
-            var ob = done[b.id] + SHIFTS[code].hours > target[b.id] ? 1 : 0;
-            if (oa !== ob) return oa - ob;
-            if (preferNonDrivers && isDriver(a) !== isDriver(b)) return isDriver(a) ? 1 : -1;
-            if (ra !== rb) return ra - rb;
+            var ia = info[a.id], ib = info[b.id];
+            if (ia.over !== ib.over) return ia.over - ib.over;
+            if (weekend) {
+              if (ia.inWeekend !== ib.inWeekend) return ia.inWeekend - ib.inWeekend;
+              if (Math.abs(ia.weekends - ib.weekends) >= 1) return ia.weekends - ib.weekends;
+            }
+            // Non allungare un blocco oltre i 3 giorni (G G N, G N N), se c'è chi può farlo.
+            if ((ia.pattern > 0) !== (ib.pattern > 0)) return ia.pattern > 0 ? 1 : -1;
+            if (code === 'N' && Math.abs(ia.nights - ib.nights) >= 1) return ia.nights - ib.nights;
+            // Risparmia gli autisti, ma solo finché non restano troppo indietro con le ore.
+            if (preferNonDrivers && isDriver(a) !== isDriver(b) && Math.abs(ia.ratio - ib.ratio) < 0.1) {
+              return isDriver(a) ? 1 : -1;
+            }
+            if (ia.pattern !== ib.pattern) return ia.pattern - ib.pattern;
+            if (ia.ratio !== ib.ratio) return ia.ratio - ib.ratio;
             return String(a.name).localeCompare(String(b.name));
           });
           var pick = candidates[0];
+          if (soft[pick.id].length) {
+            bypassed.push({ date: key, shift: code, empId: pick.id, reasons: soft[pick.id] });
+          }
           if (isDriver(pick)) driversNeeded = Math.max(0, driversNeeded - 1);
           work.assignments[pick.id][key] = code;
           done[pick.id] += SHIFTS[code].hours;
+          if (code === 'N') nights[pick.id]++;
           need--;
         }
       });
     });
 
-    return { assignments: work.assignments, uncovered: uncovered };
+    improveMonth(work, state, y, m, target, weight);
+
+    // Regole da evitare ancora superate in turni inseriti dalla proposta.
+    var finalSoft = validateMonth(work, y, m).filter(function (i) {
+      return i.level === 'soft' && i.dates.some(function (d) {
+        return codeOn(work, i.empId, d) !== codeOn(state, i.empId, d);
+      });
+    });
+    return { assignments: work.assignments, uncovered: uncovered, bypassed: finalSoft };
+  }
+
+  /*
+   * Seconda fase della proposta: prova a scambiare i turni inseriti dalla proposta
+   * (mai quelli scritti a mano) e tiene lo scambio solo se migliora il mese:
+   * meno regole da evitare superate, notti/weekend/ore più equilibrati, blocchi G G N / G N N.
+   * I vincoli rigidi (riposo, 48 h, autista nel turno) restano sempre rispettati.
+   */
+  function improveMonth(work, original, y, m, target, weight) {
+    var emps = work.employees;
+    if (emps.length < 2) return;
+    var days = monthDays(y, m);
+    var minDrivers = settingNum(original, 'minDriversPerShift');
+    var maxRow = settingNum(original, 'maxSameInRow');
+    var maxWe = settingNum(original, 'maxWeekendsPerMonth');
+
+    function isFixed(id, key) { return !!empAssignments(original, id)[key]; }
+
+    // Valori "giusti" per ciascuno: totale del mese diviso in proporzione al contratto.
+    var totW = 0, totN = 0, totWe = 0;
+    emps.forEach(function (e) { totW += weight[e.id]; });
+    var avgRatio = 0;
+    function shares() {
+      totN = 0; totWe = 0;
+      var totDone = 0, totTarget = 0;
+      emps.forEach(function (e) {
+        var s = monthSummary(work, e, y, m);
+        totDone += s.worked + s.training + s.absence;
+        totTarget += target[e.id];
+        totN += countCode(e.id, 'N');
+        totWe += weekendsWorked(work, e.id, y, m).length;
+      });
+      avgRatio = totTarget ? totDone / totTarget : 0;
+    }
+    function countCode(id, code) {
+      var n = 0;
+      days.forEach(function (k) { if (codeOn(work, id, k) === code) n++; });
+      return n;
+    }
+
+    function cost(e) {
+      var id = e.id, c = 0;
+      // regole da evitare
+      var run = 0, prev = '', block = 0;
+      for (var n = -7; n < days.length + 7; n++) {
+        var key = addDays(days[0], n);
+        var code = codeOn(work, id, key);
+        var isShift = !!SHIFTS[code];
+        run = isShift && code === prev ? run + 1 : isShift ? 1 : 0;
+        if (run > maxRow && n >= 0 && n < days.length + maxRow) c += 100;
+        block = isShift ? block + 1 : 0;
+        if (block > 3 && n >= 0 && n < days.length) c += 4;          // 4° giorno di fila
+        if (isShift && block === 1 && n >= 0 && n < days.length &&
+          !SHIFTS[codeOn(work, id, addDays(key, 1))]) c += 1;      // turno isolato
+        prev = isShift ? code : '';
+      }
+      var we = weekendsWorked(work, id, y, m).length;
+      if (we > maxWe) c += 100 * (we - maxWe);
+      var share = weight[id] / totW;
+      var dn = countCode(id, 'N') - totN * share;
+      var dw = we - totWe * share;
+      // ore: scostamento dalla media, in proporzione al monte ore (circa in "turni")
+      var s = monthSummary(work, e, y, m);
+      var dh = target[id] ? ((s.worked + s.training + s.absence) / target[id] - avgRatio) * target[id] / 12 : 0;
+      return c + 6 * dn * dn + 4 * dw * dw + 2 * dh * dh;
+    }
+
+    function driversOk(key, code) {
+      var staff = staffOn(work, key, code);
+      return !staff.length || staff.filter(isDriver).length >= minDrivers;
+    }
+
+    function setCode(id, key, code) {
+      if (code) work.assignments[id][key] = code;
+      else delete work.assignments[id][key];
+    }
+
+    // Prova una mossa: applica, controlla i vincoli rigidi e il costo, altrimenti annulla.
+    function tryMove(changes, involved) {
+      var before = 0;
+      involved.forEach(function (e) { before += cost(e); });
+      var old = changes.map(function (ch) { return codeOn(work, ch.id, ch.key); });
+      changes.forEach(function (ch) { setCode(ch.id, ch.key, ch.code); });
+      var ok = changes.every(function (ch) {
+        return !ch.code || blockers(work, ch.id, ch.key, ch.code).length === 0;
+      }) && changes.every(function (ch) {
+        return driversOk(ch.key, 'G') && driversOk(ch.key, 'N');
+      });
+      if (ok) {
+        var after = 0;
+        involved.forEach(function (e) { after += cost(e); });
+        if (after < before - 1e-9) return true;
+      }
+      changes.forEach(function (ch, i) { setCode(ch.id, ch.key, old[i]); });
+      return false;
+    }
+
+    shares();
+    for (var pass = 0; pass < 20; pass++) {
+      var improved = false;
+      days.forEach(function (key) {
+        emps.forEach(function (x) {
+          var cx = codeOn(work, x.id, key);
+          if (!SHIFTS[cx] || isFixed(x.id, key)) return;
+          emps.forEach(function (yE) {
+            if (yE === x) return;
+            var cy = codeOn(work, yE.id, key);
+            if (!cy) {
+              // il turno di x passa a y, libero quel giorno
+              if (tryMove([{ id: x.id, key: key, code: '' }, { id: yE.id, key: key, code: cx }], [x, yE])) {
+                improved = true;
+                cx = '';
+              }
+            } else if (SHIFTS[cy] && cy !== cx && !isFixed(yE.id, key)) {
+              // x e y si scambiano giorno e notte
+              if (tryMove([{ id: x.id, key: key, code: cy }, { id: yE.id, key: key, code: cx }], [x, yE])) {
+                improved = true;
+                cx = cy;
+              }
+            }
+          });
+        });
+      });
+      if (!improved) break;
+    }
   }
 
   var Rules = {
@@ -429,6 +710,9 @@
     blockers: blockers,
     validateMonth: validateMonth,
     staffOn: staffOn,
+    monthWeekends: monthWeekends,
+    weekendsWorked: weekendsWorked,
+    softBlockers: softBlockers,
     generateMonth: generateMonth
   };
 

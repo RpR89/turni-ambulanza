@@ -27,6 +27,11 @@ e non c'è un server con i dati.
     (con patente) oppure *Soccorritore* (senza patente). Gli autisti sono segnati con una **A** accanto al nome.
   - **permessi 104**: al massimo 3 nel mese di calendario e solo per chi ha diritto alla 104.
     Accanto al nome compare il contatore dei permessi usati (es. `104 · 2/3`).
+- **Regole da evitare** (superabili solo se non c'è alternativa, caselle in arancione):
+  - non più di **2 G o 2 N di fila**: meglio blocchi alternati tipo `G G N` o `G N N`;
+  - non più di **2 weekend al mese**: un weekend conta anche se si lavora solo il sabato o solo la domenica.
+- **Equilibrio**: le colonne *Notti* e *Weekend* mostrano quanti ne ha fatti ciascuno.
+  Il valore è evidenziato quando si discosta troppo dalla media, calcolata in proporzione al contratto.
 - **Monte ore mensile** per ogni dipendente:
   - giorni dal lunedì al venerdì del mese × 7,6 h per il tempo pieno (38 h/settimana);
   - giorni dal lunedì al venerdì × 4,8 h per il part-time da 24 h/settimana (24 ÷ 5).
@@ -39,6 +44,9 @@ e non c'è un server con i dati.
   Rispetta sempre i vincoli e dà la precedenza a chi è più indietro con il monte ore.
   In ogni turno mette prima un autista soccorritore e poi, se possibile, un soccorritore,
   così gli autisti restano disponibili per gli altri turni.
+  Cerca di formare blocchi `G G N` / `G N N`, di far lavorare la stessa persona sabato e domenica
+  e di distribuire notti, weekend e ore in modo equo. Poi prova a migliorare il mese con degli scambi
+  tra dipendenti. Supera le regole da evitare solo quando non c'è alternativa e lo segnala.
 - **Stampa** (A4 orizzontale) ed **esportazione CSV** per Excel.
 - **Backup**: i dati stanno nel browser. Con *Scarica backup* / *Carica backup* li salvi
   o li sposti su un altro computer.

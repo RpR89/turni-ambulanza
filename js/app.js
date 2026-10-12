@@ -191,17 +191,19 @@
     var emps = activeEmployees();
     var todayKey = R.toKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
 
-    // Celle con errori → elenco messaggi per il tooltip
-    var cellErr = {};
+    // Celle con errori (rosso) o regole da evitare (arancione) → messaggi per il tooltip
+    var cellErr = {}, cellSoft = {};
     issues.forEach(function (i) {
-      if (i.level !== 'error') return;
+      if (i.level !== 'error' && i.level !== 'soft') return;
+      var map = i.level === 'error' ? cellErr : cellSoft;
       (i.empIds || [i.empId]).forEach(function (id) {
         i.dates.forEach(function (d) {
           var k = id + '|' + d;
-          (cellErr[k] = cellErr[k] || []).push(prettyDates(i.message));
+          (map[k] = map[k] || []).push(prettyDates(i.message) + (i.level === 'soft' ? ' — da evitare' : ''));
         });
       });
     });
+    var avg = balanceAverages();
 
     var h = '<thead><tr><th class="name">Dipendente</th>';
     days.forEach(function (key) {
@@ -209,14 +211,16 @@
       var cls = (wd >= 5 ? 'weekend' : '') + (key === todayKey ? ' today' : '') + (wd === 0 ? ' monday' : '');
       h += '<th class="day ' + cls + '"><span>' + WEEKDAYS[wd] + '</span>' + (+key.slice(8)) + '</th>';
     });
-    h += '<th class="sum" title="Ore dei turni G e N">Turni<br>h</th>' +
+    h += '<th class="sum" title="Turni di notte nel mese">Notti</th>' +
+      '<th class="sum" title="Weekend lavorati (basta il sabato o la domenica)">Week<br>end</th>' +
+      '<th class="sum" title="Ore dei turni G e N">Turni<br>h</th>' +
       '<th class="sum" title="Ore di formazione">Form.<br>h</th>' +
       '<th class="sum" title="Ferie e malattia nei giorni lun–ven, permessi 104">Assenze<br>h</th>' +
       '<th class="sum" title="Giorni lun–ven × ore settimanali ÷ 5">Previste<br>h</th>' +
       '<th class="sum" title="Turni + formazione + assenze − previste">Saldo<br>h</th></tr></thead><tbody>';
 
     if (!emps.length) {
-      h += '<tr><td class="empty" colspan="' + (days.length + 6) + '">Nessun dipendente: aggiungili nella scheda ' +
+      h += '<tr><td class="empty" colspan="' + (days.length + 8) + '">Nessun dipendente: aggiungili nella scheda ' +
         '<a href="#" data-goto="dipendenti">Dipendenti</a>.</td></tr>';
     }
 
@@ -236,14 +240,22 @@
         var entry = getEntry(e.id, key);
         var code = R.codeOf(entry);
         var errs = cellErr[e.id + '|' + key];
+        var softs = cellSoft[e.id + '|' + key];
+        var tips = (errs || []).concat(softs || []);
         var wd = R.weekday(key);
         var cls = 'cell' + (code ? ' cell-' + code : '') + (wd >= 5 ? ' weekend' : '') +
-          (wd === 0 ? ' monday' : '') + (errs ? ' error' : '');
+          (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
           '" data-date="' + key + '" data-row="' + row + '" data-col="' + col + '"' +
-          (errs ? ' title="' + esc(errs.join('\n')) + '"' : '') + '>' + cellHtml(entry) + '</td>';
+          (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry) + '</td>';
       });
       var bal = s.balance;
+      var maxWe = +state.settings.maxWeekendsPerMonth;
+      var w = e.weeklyHours / (+state.settings.fullTimeWeeklyHours || 38);
+      var nCls = Math.abs(s.nights / w - avg.nights) > 1.5 ? 'over' : '';
+      h += '<td class="sum ' + nCls + '" title="Media in proporzione al contratto: ' + fmt(avg.nights * w) + '">' +
+        s.nights + '</td><td class="sum ' + (s.weekends > maxWe ? 'over' : '') + '" title="Massimo ' + maxWe +
+        ' — media in proporzione al contratto: ' + fmt(avg.weekends * w) + '">' + s.weekends + '</td>';
       h += '<td class="sum">' + fmt(s.worked) + '</td><td class="sum">' + (s.training ? fmt(s.training) : '') +
         '</td><td class="sum">' + (s.absence ? fmt(s.absence) : '') +
         '</td><td class="sum">' + fmt(s.target) + '</td><td class="sum ' +
@@ -261,7 +273,7 @@
           esc(R.staffOn(state, key, code)
             .map(function (e) { return e.name; }).join(', ') || 'Nessuno') + '">' + have + '</td>';
       });
-      h += '<td colspan="5"></td></tr>';
+      h += '<td colspan="7"></td></tr>';
     });
     var minDrivers = +state.settings.minDriversPerShift;
     ['G', 'N'].forEach(function (code) {
@@ -273,11 +285,25 @@
         h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' +
           esc(drv.map(function (e) { return e.name; }).join(', ') || 'Nessun autista') + '">' + drv.length + '</td>';
       });
-      h += '<td colspan="5"></td></tr>';
+      h += '<td colspan="7"></td></tr>';
     });
     h += '</tfoot>';
 
     $('#grid').innerHTML = h;
+  }
+
+  // Notti e weekend medi per un tempo pieno, per evidenziare chi si discosta troppo.
+  function balanceAverages() {
+    var emps = activeEmployees();
+    var full = +state.settings.fullTimeWeeklyHours || 38;
+    var totW = 0, n = 0, we = 0;
+    emps.forEach(function (e) {
+      var s = R.monthSummary(state, e, view.y, view.m);
+      totW += e.weeklyHours / full;
+      n += s.nights;
+      we += s.weekends;
+    });
+    return { nights: totW ? n / totW : 0, weekends: totW ? we / totW : 0 };
   }
 
   function renderWeeks() {
@@ -301,12 +327,14 @@
 
   function renderIssues(issues) {
     var errors = issues.filter(function (i) { return i.level === 'error'; });
+    var softs = issues.filter(function (i) { return i.level === 'soft'; });
     var missing = issues.filter(function (i) { return i.type === 'coverage' && /scoperto/.test(i.message); });
     var extra = issues.filter(function (i) { return i.type === 'coverage' && /eccesso/.test(i.message); });
 
     var badge = $('#issue-count');
-    badge.textContent = errors.length ? errors.length + ' errori' : 'nessun errore';
-    badge.className = 'badge ' + (errors.length ? 'bad' : 'good');
+    badge.textContent = (errors.length ? errors.length + ' errori' : 'nessun errore') +
+      (softs.length ? ' · ' + softs.length + ' da evitare' : '');
+    badge.className = 'badge ' + (errors.length ? 'bad' : softs.length ? 'soft' : 'good');
 
     var h = '';
     errors.forEach(function (i) {
@@ -314,6 +342,11 @@
       var e = i.empId ? empById(i.empId) : null;
       h += '<li class="err" data-emp="' + esc(empId) + '" data-date="' + i.dates[i.dates.length - 1] + '">' +
         (e ? '<b>' + esc(e.name) + '</b>: ' : '') + esc(prettyDates(i.message)) + '</li>';
+    });
+    softs.forEach(function (i) {
+      var e = empById(i.empId);
+      h += '<li class="err soft" data-emp="' + esc(i.empId) + '" data-date="' + i.dates[0] + '">' +
+        '<b>' + esc(e ? e.name : '?') + '</b>: ' + esc(prettyDates(i.message)) + '</li>';
     });
     function group(list, label, cls) {
       if (!list.length) return '';
@@ -323,7 +356,7 @@
     }
     h += group(missing, 'turni scoperti', 'warn');
     h += group(extra, 'turni con personale in eccesso', 'info');
-    if (!h) h = '<li class="okmsg">Tutto a posto: vincoli rispettati e turni coperti.</li>';
+    if (!h) h = '<li class="okmsg">Tutto a posto: vincoli e preferenze rispettati, turni coperti.</li>';
     $('#issues').innerHTML = h;
   }
 
@@ -449,20 +482,29 @@
     if (!activeEmployees().length) return toast('Aggiungi prima i dipendenti');
     if (!confirm('Riempire automaticamente i turni scoperti di ' + MONTHS[view.m - 1] + '?\n' +
       'I turni già inseriti non vengono toccati. Puoi sempre annullare.')) return;
+    toast('Calcolo della proposta in corso…', true);
+    // Lascia al browser il tempo di mostrare il messaggio prima del calcolo.
+    setTimeout(function () { runGenerate(); }, 30);
+  }
+
+  function runGenerate() {
     snapshot();
     var res = R.generateMonth(state, view.y, view.m);
     state.assignments = res.assignments;
     save();
     renderMonth();
+    var bypassNote = res.bypassed.length ? ' ' + res.bypassed.length +
+      ' regole "da evitare" superate perché non c\'era alternativa (in arancione).' : '';
     if (res.uncovered.length) {
       var miss = res.uncovered.reduce(function (t, u) { return t + u.missing; }, 0);
       var noDriver = res.uncovered.filter(function (u) { return u.driver; }).length;
       var parts = [];
       if (miss) parts.push(miss + ' posti scoperti');
       if (noDriver) parts.push(noDriver + ' turni senza autista');
-      toast('Fatto. Restano ' + parts.join(' e ') + ': non si possono sistemare senza violare i vincoli.', true);
+      toast('Fatto. Restano ' + parts.join(' e ') + ': non si possono sistemare senza violare i vincoli.' +
+        bypassNote, true);
     } else {
-      toast('Fatto: tutti i turni del mese sono coperti.');
+      toast('Fatto: tutti i turni del mese sono coperti.' + bypassNote, !!bypassNote);
     }
   }
 
@@ -482,11 +524,11 @@
     var days = R.monthDays(view.y, view.m);
     var rows = [['Dipendente', 'Qualifica', 'Contratto'].concat(days.map(function (k) {
       return WEEKDAYS[R.weekday(k)] + ' ' + (+k.slice(8));
-    }), ['Ore turni', 'Ore formazione', 'Ore assenze', 'Ore previste', 'Saldo'])];
+    }), ['Notti', 'Weekend', 'Ore turni', 'Ore formazione', 'Ore assenze', 'Ore previste', 'Saldo'])];
     activeEmployees().forEach(function (e) {
       var s = R.monthSummary(state, e, view.y, view.m);
       rows.push([e.name, R.ROLES[e.role], contractLabel(e.weeklyHours)].concat(days.map(function (k) { return cellText(getEntry(e.id, k)); }),
-        [fmt(s.worked), fmt(s.training), fmt(s.absence), fmt(s.target), fmtSigned(s.balance)]));
+        [String(s.nights), String(s.weekends), fmt(s.worked), fmt(s.training), fmt(s.absence), fmt(s.target), fmtSigned(s.balance)]));
     });
     ['G', 'N'].forEach(function (code) {
       rows.push(['Copertura ' + code, '', ''].concat(days.map(function (k) {
@@ -630,6 +672,8 @@
     f.perm104Hours.value = state.settings.perm104Hours;
     f.perm104PerMonth.value = state.settings.perm104PerMonth;
     f.minDriversPerShift.value = state.settings.minDriversPerShift;
+    f.maxSameInRow.value = state.settings.maxSameInRow;
+    f.maxWeekendsPerMonth.value = state.settings.maxWeekendsPerMonth;
   }
 
   function initSettings() {
@@ -645,6 +689,9 @@
         ? +f.perm104PerMonth.value : R.DEFAULT_SETTINGS.perm104PerMonth;
       state.settings.minDriversPerShift = f.minDriversPerShift.value !== '' && +f.minDriversPerShift.value >= 0
         ? +f.minDriversPerShift.value : R.DEFAULT_SETTINGS.minDriversPerShift;
+      state.settings.maxSameInRow = +f.maxSameInRow.value >= 1 ? +f.maxSameInRow.value : R.DEFAULT_SETTINGS.maxSameInRow;
+      state.settings.maxWeekendsPerMonth = f.maxWeekendsPerMonth.value !== '' && +f.maxWeekendsPerMonth.value >= 0
+        ? +f.maxWeekendsPerMonth.value : R.DEFAULT_SETTINGS.maxWeekendsPerMonth;
       save();
       renderAll();
       toast('Impostazioni salvate.');

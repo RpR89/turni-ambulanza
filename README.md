@@ -50,6 +50,12 @@ e non c'è un server con i dati.
   Cerca di formare blocchi `G G N` / `G N N`, di far lavorare la stessa persona sabato e domenica
   e di distribuire notti, weekend e ore in modo equo. Poi prova a migliorare il mese con degli scambi
   tra dipendenti. Supera le regole da evitare solo quando non c'è alternativa e lo segnala.
+- **Turni bloccati 🔒**: con lo strumento *blocca* (tasto <kbd>L</kbd>) blocchi le caselle che hai sistemato a mano.
+  Il lucchetto accanto al nome blocca tutto il mese di un dipendente, *Blocca mese* blocca tutto.
+  Una casella bloccata, anche vuota, non viene mai cambiata dalla proposta automatica né da *Svuota mese*,
+  e non si modifica per sbaglio: va prima sbloccata.
+  **Rifai proposta** ricalcola da capo tutti i turni G/N non bloccati del mese
+  (ferie, malattia, permessi, richieste di riposo e formazione restano sempre).
 - **Stampa** (A4 orizzontale) ed **esportazione CSV** per Excel.
 - **Backup**: i dati stanno nel browser. Con *Scarica backup* / *Carica backup* li salvi
   o li sposti su un altro computer.

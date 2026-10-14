@@ -244,3 +244,41 @@ test('la proposta automatica equilibra notti e weekend e supera le regole solo s
     full.forEach(x => assert.ok(x.weekends <= 3));
   });
 });
+
+function team() {
+  const employees = [];
+  for (let i = 0; i < 12; i++) {
+    employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: i < 10 ? 38 : 24, role: i < 6 ? 'autista' : 'soccorritore' });
+  }
+  return employees;
+}
+
+test('caselle bloccate: la proposta non le cambia e non riempie quelle vuote', () => {
+  const employees = team();
+  const s = makeState(employees, { e0: { '2026-10-05': 'G' } });
+  s.locks = { e0: { '2026-10-05': true, '2026-10-06': true, '2026-10-07': true } };
+  const res = R.generateMonth(s, 2026, 10);
+  assert.equal(res.assignments.e0['2026-10-05'], 'G');
+  assert.equal(res.assignments.e0['2026-10-06'], undefined);
+  assert.equal(res.assignments.e0['2026-10-07'], undefined);
+});
+
+test('rifai proposta: ricalcola i turni non bloccati e conserva bloccati e assenze', () => {
+  const employees = team();
+  const s = makeState(employees, {});
+  const first = R.generateMonth(s, 2026, 10).assignments;
+  // l'utente sistema a mano e blocca due turni, più una richiesta di riposo
+  const keptKey = Object.keys(first.e3).find(k => k.startsWith('2026-10'));
+  const keptCode = first.e3[keptKey];
+  first.e4['2026-10-15'] = 'R';
+  const s2 = makeState(employees, first);
+  s2.locks = { e3: { [keptKey]: true }, e5: { '2026-10-20': true } };
+  const e5Before = first.e5['2026-10-20'];
+  const res = R.generateMonth(s2, 2026, 10, { regenerate: true });
+  assert.equal(res.assignments.e3[keptKey], keptCode);
+  assert.equal(res.assignments.e4['2026-10-15'], 'R');
+  assert.equal(res.assignments.e5['2026-10-20'], e5Before);
+  const out = makeState(employees, res.assignments);
+  assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+  assert.equal(res.uncovered.length, 0);
+});

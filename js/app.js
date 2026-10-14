@@ -16,7 +16,8 @@
       version: 1,
       settings: JSON.parse(JSON.stringify(R.DEFAULT_SETTINGS)),
       employees: [],
-      assignments: {}
+      assignments: {},
+      locks: {}
     };
   }
 
@@ -42,6 +43,7 @@
       };
     });
     base.assignments = s.assignments && typeof s.assignments === 'object' ? s.assignments : {};
+    base.locks = s.locks && typeof s.locks === 'object' ? s.locks : {};
     return base;
   }
 
@@ -60,12 +62,14 @@
 
   var undoStack = [];
   function snapshot() {
-    undoStack.push(JSON.stringify(state.assignments));
+    undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks }));
     if (undoStack.length > 50) undoStack.shift();
   }
   function undo() {
     if (!undoStack.length) return toast('Niente da annullare');
-    state.assignments = JSON.parse(undoStack.pop());
+    var snap = JSON.parse(undoStack.pop());
+    state.assignments = snap.assignments;
+    state.locks = snap.locks || {};
     save();
     renderMonth();
   }
@@ -181,6 +185,7 @@
     $all('.max-week').forEach(function (el) { el.textContent = state.settings.maxWeeklyHours; });
 
     var issues = R.validateMonth(state, view.y, view.m);
+    $('#btn-lock-month').textContent = monthLocked() ? '🔓 Sblocca mese' : '🔒 Blocca mese';
     renderGrid(issues);
     renderWeeks();
     renderIssues(issues);
@@ -234,6 +239,9 @@
       }
       var info = R.ROLES[e.role] + (e.weeklyHours !== 38 ? ' · ' + contractLabel(e.weeklyHours) : '');
       h += '<tr><th class="name' + (R.isDriver(e) ? ' driver' : '') + '" title="' + esc(info) + '">' +
+        '<button type="button" class="row-lock' + (rowLocked(e.id) ? ' on' : '') + '" data-lock-emp="' + esc(e.id) +
+        '" title="' + (rowLocked(e.id) ? 'Sblocca' : 'Blocca') + ' tutto il mese di questo dipendente">' +
+        (rowLocked(e.id) ? '🔒' : '🔓') + '</button>' +
         (R.isDriver(e) ? '<span class="drv" title="Autista soccorritore">A</span>' : '') + esc(e.name) + tag +
         '<small>' + esc(info) + '</small></th>';
       days.forEach(function (key, col) {
@@ -244,7 +252,8 @@
         var tips = (errs || []).concat(softs || []);
         var wd = R.weekday(key);
         var cls = 'cell' + (code ? ' cell-' + code : '') + (wd >= 5 ? ' weekend' : '') +
-          (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '');
+          (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
+          (R.isLocked(state, e.id, key) ? ' locked' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
           '" data-date="' + key + '" data-row="' + row + '" data-col="' + col + '"' +
           (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry) + '</td>';
@@ -364,9 +373,28 @@
 
   var painting = null; // valore che si sta "dipingendo" trascinando il mouse
 
+  function setLock(empId, key, on) {
+    if (!state.locks[empId]) state.locks[empId] = {};
+    if (on) state.locks[empId][key] = true;
+    else delete state.locks[empId][key];
+  }
+
+  var lockWarned = false;
+
   // Scrive il codice nella casella; false se non cambia nulla o non è ammesso.
+  // Con lo strumento "blocca" (L) invece blocca o sblocca la casella.
   function applyToCell(td, code) {
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
+    if (code === 'L+' || code === 'L-') {
+      if (R.isLocked(state, emp, key) === (code === 'L+')) return false;
+      setLock(emp, key, code === 'L+');
+      return true;
+    }
+    if (R.isLocked(state, emp, key)) {
+      if (!lockWarned) toast('Casella bloccata 🔒: sbloccala con lo strumento "blocca" prima di modificarla.', true);
+      lockWarned = true;
+      return false;
+    }
     var entry = makeEntry(code);
     if (sameEntry(getEntry(emp, key), entry)) return false;
     if (code === 'P' && !(empById(emp) || {}).has104) {
@@ -380,7 +408,8 @@
   function paintCell(td) {
     var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
     var code = R.codeOf(entry);
-    td.className = td.className.replace(/ ?cell-[A-Z]/g, '') + (code ? ' cell-' + code : '');
+    td.className = td.className.replace(/ ?cell-[A-Z]| ?locked/g, '') + (code ? ' cell-' + code : '') +
+      (R.isLocked(state, td.getAttribute('data-emp'), td.getAttribute('data-date')) ? ' locked' : '');
     td.innerHTML = cellHtml(entry);
   }
 
@@ -412,9 +441,15 @@
       setRoving(td);
       td.focus();
       snapshot();
-      var cur = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
-      // Cliccare una casella che contiene già il valore scelto la svuota.
-      painting = sameEntry(cur, makeEntry(tool)) ? '' : tool;
+      lockWarned = false;
+      if (tool === 'L') {
+        // Il primo clic decide se il trascinamento blocca o sblocca.
+        painting = R.isLocked(state, td.getAttribute('data-emp'), td.getAttribute('data-date')) ? 'L-' : 'L+';
+      } else {
+        var cur = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
+        // Cliccare una casella che contiene già il valore scelto la svuota.
+        painting = sameEntry(cur, makeEntry(tool)) ? '' : tool;
+      }
       if (applyToCell(td, painting)) paintCell(td);
     });
 
@@ -446,6 +481,14 @@
       }
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       var k = ev.key.toUpperCase();
+      lockWarned = false;
+      if (k === 'L') {
+        ev.preventDefault();
+        snapshot();
+        applyToCell(td, R.isLocked(state, td.getAttribute('data-emp'), td.getAttribute('data-date')) ? 'L-' : 'L+');
+        commit(td.getAttribute('data-emp'), td.getAttribute('data-date'));
+        return;
+      }
       var code = CODES.indexOf(k) >= 0 ? k : (ev.key === 'Delete' || ev.key === 'Backspace' || ev.key === ' ') ? '' : null;
       if (code === null) return;
       ev.preventDefault();
@@ -461,6 +504,8 @@
     });
 
     grid.addEventListener('click', function (ev) {
+      var lockBtn = ev.target.closest('[data-lock-emp]');
+      if (lockBtn) { toggleRowLock(lockBtn.getAttribute('data-lock-emp')); return; }
       var a = ev.target.closest('[data-goto]');
       if (a) { ev.preventDefault(); showTab(a.getAttribute('data-goto')); }
     });
@@ -478,18 +523,54 @@
 
   // ---------- Azioni ----------
 
-  function generate() {
-    if (!activeEmployees().length) return toast('Aggiungi prima i dipendenti');
-    if (!confirm('Riempire automaticamente i turni scoperti di ' + MONTHS[view.m - 1] + '?\n' +
-      'I turni già inseriti non vengono toccati. Puoi sempre annullare.')) return;
-    toast('Calcolo della proposta in corso…', true);
-    // Lascia al browser il tempo di mostrare il messaggio prima del calcolo.
-    setTimeout(function () { runGenerate(); }, 30);
+  // ---------- Blocchi ----------
+
+  function rowLocked(empId) {
+    return R.monthDays(view.y, view.m).every(function (k) { return R.isLocked(state, empId, k); });
   }
 
-  function runGenerate() {
+  function monthLocked() {
+    var emps = activeEmployees();
+    return emps.length > 0 && emps.every(function (e) { return rowLocked(e.id); });
+  }
+
+  function toggleRowLock(empId) {
+    var on = !rowLocked(empId);
     snapshot();
-    var res = R.generateMonth(state, view.y, view.m);
+    R.monthDays(view.y, view.m).forEach(function (k) { setLock(empId, k, on); });
+    save();
+    renderMonth();
+    var e = empById(empId);
+    toast((on ? 'Bloccato' : 'Sbloccato') + ' tutto ' + MONTHS[view.m - 1].toLowerCase() + ' di ' + (e ? e.name : '') + '.');
+  }
+
+  function toggleMonthLock() {
+    var on = !monthLocked();
+    snapshot();
+    activeEmployees().forEach(function (e) {
+      R.monthDays(view.y, view.m).forEach(function (k) { setLock(e.id, k, on); });
+    });
+    save();
+    renderMonth();
+    toast(on ? 'Mese bloccato: la proposta automatica non cambierà nulla.' : 'Mese sbloccato.');
+  }
+
+  function generate(regenerate) {
+    if (!activeEmployees().length) return toast('Aggiungi prima i dipendenti');
+    var msg = regenerate
+      ? 'Rifare la proposta di ' + MONTHS[view.m - 1] + '?\nI turni G e N NON bloccati vengono ricalcolati da capo. ' +
+        'Restano i turni bloccati 🔒, ferie, malattia, permessi, richieste di riposo e formazione. Puoi sempre annullare.'
+      : 'Riempire automaticamente i turni scoperti di ' + MONTHS[view.m - 1] + '?\n' +
+        'I turni già inseriti non vengono toccati. Puoi sempre annullare.';
+    if (!confirm(msg)) return;
+    toast('Calcolo della proposta in corso…', true);
+    // Lascia al browser il tempo di mostrare il messaggio prima del calcolo.
+    setTimeout(function () { runGenerate(regenerate); }, 30);
+  }
+
+  function runGenerate(regenerate) {
+    snapshot();
+    var res = R.generateMonth(state, view.y, view.m, { regenerate: !!regenerate });
     state.assignments = res.assignments;
     save();
     renderMonth();
@@ -536,6 +617,9 @@
     var days = [];
     for (var k = from; k <= to; k = R.addDays(k, 1)) days.push(k);
     if (days.length > 366) return toast('Periodo troppo lungo (massimo un anno).');
+    var locked = days.filter(function (k) { return R.isLocked(state, empId, k); });
+    days = days.filter(function (k) { return !R.isLocked(state, empId, k); });
+    if (!days.length) return toast('Tutti i giorni del periodo sono bloccati 🔒.');
     var busy = days.filter(function (k) {
       var c = R.codeOn(state, empId, k);
       return c && c !== code;
@@ -548,15 +632,17 @@
     save();
     renderMonth();
     var label = { R: 'Richiesta di riposo inserita', F: 'Ferie inserite', M: 'Malattia inserita' }[code];
-    toast(label + ' per ' + e.name + ' dal ' + fmtDate(from) + ' al ' + fmtDate(to) + '.');
+    toast(label + ' per ' + e.name + ' dal ' + fmtDate(from) + ' al ' + fmtDate(to) + '.' +
+      (locked.length ? ' ' + locked.length + ' giorni bloccati 🔒 lasciati com\'erano.' : ''));
   }
 
   function clearMonth() {
-    if (!confirm('Cancellare tutti i turni, ferie e malattie di ' + MONTHS[view.m - 1] + ' ' + view.y + '?')) return;
+    if (!confirm('Cancellare tutti i turni, ferie e malattie di ' + MONTHS[view.m - 1] + ' ' + view.y +
+      '?\nLe caselle bloccate 🔒 restano.')) return;
     snapshot();
     var days = R.monthDays(view.y, view.m);
     Object.keys(state.assignments).forEach(function (id) {
-      days.forEach(function (k) { delete state.assignments[id][k]; });
+      days.forEach(function (k) { if (!R.isLocked(state, id, k)) delete state.assignments[id][k]; });
     });
     save();
     renderMonth();
@@ -786,7 +872,9 @@
       renderEmployees();
       renderPeriodForm();
     });
-    $('#btn-generate').addEventListener('click', generate);
+    $('#btn-generate').addEventListener('click', function () { generate(false); });
+    $('#btn-regenerate').addEventListener('click', function () { generate(true); });
+    $('#btn-lock-month').addEventListener('click', toggleMonthLock);
     $('#btn-undo').addEventListener('click', undo);
     $('#btn-clear-month').addEventListener('click', clearMonth);
     $('#period-form').addEventListener('submit', insertPeriod);

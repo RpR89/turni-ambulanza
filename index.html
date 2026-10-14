@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=1.5">
+  <link rel="stylesheet" href="css/style.css?v=1.6">
 </head>
 <body>
   <header class="topbar no-print">
@@ -41,10 +41,13 @@
             <input id="training-hours" type="number" min="0.5" max="24" step="0.5" value="8" title="Ore di formazione" aria-label="Ore di formazione"><small>h</small>
           </span>
           <button class="tool cell-clear" data-tool="" title="Cancella (tasto Canc)">✕ <small>cancella</small></button>
+          <button class="tool tool-lock" data-tool="L" title="Blocca o sblocca le caselle: la proposta automatica non le cambia (tasto L)">🔒 <small>blocca</small></button>
         </div>
 
         <div class="actions">
-          <button id="btn-generate" class="primary" title="Riempie i turni scoperti rispettando i vincoli">Proposta automatica</button>
+          <button id="btn-generate" class="primary" title="Riempie solo i turni scoperti, senza toccare quelli già inseriti">Proposta automatica</button>
+          <button id="btn-regenerate" title="Ricalcola tutti i turni G/N non bloccati del mese">Rifai proposta</button>
+          <button id="btn-lock-month" title="Blocca o sblocca tutte le caselle del mese">🔒 Blocca mese</button>
           <button id="btn-undo" title="Annulla l'ultima modifica (Ctrl+Z)">Annulla</button>
           <button id="btn-clear-month">Svuota mese</button>
           <button id="btn-print">Stampa</button>
@@ -83,7 +86,9 @@
 
       <p class="hint no-print">
         Scegli cosa inserire e clicca sulle caselle (puoi anche trascinare). Da tastiera: frecce per muoverti,
-        <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd> per scrivere, <kbd>Canc</kbd> per cancellare.
+        <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd> per scrivere, <kbd>Canc</kbd> per cancellare,
+        <kbd>L</kbd> per bloccare/sbloccare. Le caselle bloccate 🔒 non vengono mai cambiate dalla proposta automatica:
+        blocca i turni che hai sistemato e usa <b>Rifai proposta</b> per ricalcolare il resto.
         Le caselle rosse violano un vincolo, quelle arancioni una regola da evitare: passa sopra con il mouse per il dettaglio.
       </p>
 
@@ -177,11 +182,11 @@
     </section>
   </main>
 
-  <footer class="version no-print">Turni Ambulanza · versione 1.5 (richieste di riposo per periodo)</footer>
+  <footer class="version no-print">Turni Ambulanza · versione 1.6 (turni bloccati)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/rules.js?v=1.5"></script>
-  <script src="js/app.js?v=1.5"></script>
+  <script src="js/rules.js?v=1.6"></script>
+  <script src="js/app.js?v=1.6"></script>
 </body>
 </html>

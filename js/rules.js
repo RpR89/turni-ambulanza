@@ -134,6 +134,11 @@
 
   function codeOn(state, empId, key) { return codeOf(empAssignments(state, empId)[key]); }
 
+  // Casella bloccata: la proposta automatica non la cambia mai (né la riempie se è vuota).
+  function isLocked(state, empId, key) {
+    return !!(state.locks && state.locks[empId] && state.locks[empId][key]);
+  }
+
   // Ore di lavoro effettivo del giorno: turni e formazione.
   // Un turno appartiene al giorno (e quindi a settimana e mese) in cui inizia.
   function workHoursOn(state, empId, key) {
@@ -454,13 +459,27 @@
    *  7. chi è più indietro con il monte ore.
    * Restituisce le nuove assegnazioni, i posti rimasti scoperti e le regole superate.
    */
-  function generateMonth(state, y, m) {
+  function generateMonth(state, y, m, opts) {
     var cfg = settingsOf(state);
     var work = {
       settings: state.settings,
       employees: activeOf(state),
-      assignments: JSON.parse(JSON.stringify(state.assignments || {}))
+      assignments: JSON.parse(JSON.stringify(state.assignments || {})),
+      locks: state.locks || {}
     };
+    // "Rifai proposta": toglie i turni G/N non bloccati del mese e li ricalcola.
+    // Ferie, malattia, permessi, richieste di riposo e formazione restano sempre.
+    if (opts && opts.regenerate) {
+      work.employees.forEach(function (e) {
+        var a = work.assignments[e.id] || {};
+        monthDays(y, m).forEach(function (k) {
+          if (SHIFTS[codeOf(a[k])] && !isLocked(state, e.id, k)) delete a[k];
+        });
+      });
+    }
+    // Punto di partenza: ciò che la proposta non può cambiare.
+    var base = { settings: state.settings, employees: work.employees, locks: work.locks,
+      assignments: JSON.parse(JSON.stringify(work.assignments)) };
     var minDrivers = settingNum(state, 'minDriversPerShift');
     var target = {}, done = {}, nights = {}, weight = {};
     work.employees.forEach(function (e) {
@@ -483,7 +502,8 @@
         var driversNeeded = Math.max(0, minDrivers - staffed.filter(isDriver).length);
         while (need > 0) {
           var available = work.employees.filter(function (e) {
-            return !work.assignments[e.id][key] && blockers(work, e.id, key, code).length === 0;
+            return !work.assignments[e.id][key] && !isLocked(state, e.id, key) &&
+              blockers(work, e.id, key, code).length === 0;
           });
           // Finché manca l'autista, il posto va a un autista soccorritore.
           var candidates = driversNeeded > 0 ? available.filter(isDriver) : available;
@@ -549,12 +569,12 @@
       });
     });
 
-    improveMonth(work, state, y, m, target, weight);
+    improveMonth(work, base, y, m, target, weight);
 
     // Regole da evitare ancora superate in turni inseriti dalla proposta.
     var finalSoft = validateMonth(work, y, m).filter(function (i) {
       return i.level === 'soft' && i.dates.some(function (d) {
-        return codeOn(work, i.empId, d) !== codeOn(state, i.empId, d);
+        return codeOn(work, i.empId, d) !== codeOn(base, i.empId, d);
       });
     });
     return { assignments: work.assignments, uncovered: uncovered, bypassed: finalSoft };
@@ -574,7 +594,7 @@
     var maxRow = settingNum(original, 'maxSameInRow');
     var maxWe = settingNum(original, 'maxWeekendsPerMonth');
 
-    function isFixed(id, key) { return !!empAssignments(original, id)[key]; }
+    function isFixed(id, key) { return !!empAssignments(original, id)[key] || isLocked(original, id, key); }
 
     // Valori "giusti" per ciascuno: totale del mese diviso in proporzione al contratto.
     var totW = 0, totN = 0, totWe = 0;
@@ -665,7 +685,7 @@
           emps.forEach(function (yE) {
             if (yE === x) return;
             var cy = codeOn(work, yE.id, key);
-            if (!cy) {
+            if (!cy && !isLocked(original, yE.id, key)) {
               // il turno di x passa a y, libero quel giorno
               if (tryMove([{ id: x.id, key: key, code: '' }, { id: yE.id, key: key, code: cx }], [x, yE])) {
                 improved = true;
@@ -693,6 +713,7 @@
     isDriver: isDriver,
     codeOf: codeOf,
     codeOn: codeOn,
+    isLocked: isLocked,
     workHoursOn: workHoursOn,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     toKey: toKey,

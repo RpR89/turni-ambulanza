@@ -60,6 +60,10 @@ e non c'è un server con i dati.
 - Il permesso 104 vale 7,6 h in qualsiasi giorno, anche per i part-time.
   Ore e numero massimo si cambiano in *Impostazioni*.
 - La formazione conta come lavoro: entra nelle ore del mese e nel massimo di 48 h settimanali.
+- Weekend lavorato = almeno un turno `G` o `N` che inizia di sabato o di domenica.
+  La notte tra venerdì e sabato conta come venerdì, quindi non consuma un weekend;
+  la notte tra domenica e lunedì conta come domenica.
+  Ferie, malattia, permessi 104, formazione e richieste di non lavorare nel weekend non contano.
 - I dipendenti disattivati (spunta *Attivo* tolta) spariscono dal tabellone e dai controlli,
   ma i loro turni passati restano salvati.
 

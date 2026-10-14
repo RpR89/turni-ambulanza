@@ -13,8 +13,11 @@ e non c'è un server con i dati.
   - `F`: ferie
   - `M`: malattia
   - `P` (mostrato come `104`): permesso Legge 104 da 7,6 h, solo per i dipendenti con la 104 attiva
-  - `R`: richiesta di non lavorare (0 h); la proposta automatica non mette turni in quel giorno
+  - `R`: richiesta di riposo, cioè il dipendente ha chiesto di non lavorare quel giorno (0 h);
+    la proposta automatica non mette mai turni in quel giorno
   - `C`: formazione, con le ore indicate nel campo accanto al pulsante
+- **Periodi**: con *Inserisci un periodo*, sopra il tabellone, metti in un colpo solo
+  una richiesta di riposo, ferie o malattia dal giorno X al giorno Y per un dipendente.
 - **Inserimento veloce**: scegli cosa inserire e clicca (o trascina) sulle caselle.
   Da tastiera ti muovi con le frecce e scrivi con <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd>
   (<kbd>Canc</kbd> cancella, <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla).

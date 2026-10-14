@@ -508,6 +508,49 @@
     }
   }
 
+  // ---------- Inserimento di un periodo (richieste di riposo, ferie, malattia) ----------
+
+  function renderPeriodForm() {
+    var sel = $('#period-emp');
+    var cur = sel.value;
+    sel.innerHTML = activeEmployees().map(function (e) {
+      return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>';
+    }).join('');
+    if (cur && empById(cur)) sel.value = cur;
+    // Proponi le date del mese visualizzato se il campo è vuoto o fuori mese.
+    var first = R.toKey(view.y, view.m, 1);
+    ['#period-from', '#period-to'].forEach(function (id) {
+      var el = $(id);
+      if (!el.value || el.value.slice(0, 7) !== first.slice(0, 7)) el.value = first;
+    });
+  }
+
+  function insertPeriod(ev) {
+    ev.preventDefault();
+    var empId = $('#period-emp').value;
+    var code = $('#period-code').value;
+    var from = $('#period-from').value, to = $('#period-to').value;
+    var e = empById(empId);
+    if (!e || !from || !to) return toast('Scegli dipendente e date.');
+    if (to < from) return toast('La data "Al" è prima di "Dal".');
+    var days = [];
+    for (var k = from; k <= to; k = R.addDays(k, 1)) days.push(k);
+    if (days.length > 366) return toast('Periodo troppo lungo (massimo un anno).');
+    var busy = days.filter(function (k) {
+      var c = R.codeOn(state, empId, k);
+      return c && c !== code;
+    });
+    if (busy.length && !confirm('Nel periodo ' + e.name + ' ha già ' + busy.length +
+      ' giorni con turni o altre voci (' + busy.map(fmtDate).slice(0, 6).join(', ') +
+      (busy.length > 6 ? '…' : '') + ').\nSostituirli?')) return;
+    snapshot();
+    days.forEach(function (k) { setCell(empId, k, code); });
+    save();
+    renderMonth();
+    var label = { R: 'Richiesta di riposo inserita', F: 'Ferie inserite', M: 'Malattia inserita' }[code];
+    toast(label + ' per ' + e.name + ' dal ' + fmtDate(from) + ' al ' + fmtDate(to) + '.');
+  }
+
   function clearMonth() {
     if (!confirm('Cancellare tutti i turni, ferie e malattie di ' + MONTHS[view.m - 1] + ' ' + view.y + '?')) return;
     snapshot();
@@ -713,6 +756,7 @@
 
   function renderAll() {
     renderMonth();
+    renderPeriodForm();
     renderEmployees();
     renderSettings();
   }
@@ -723,6 +767,7 @@
     view.m = ((m - 1) % 12 + 12) % 12 + 1;
     renderMonth();
     renderEmployees();
+    renderPeriodForm();
   }
 
   function init() {
@@ -739,10 +784,12 @@
       view = { y: now.getFullYear(), m: now.getMonth() + 1 };
       renderMonth();
       renderEmployees();
+      renderPeriodForm();
     });
     $('#btn-generate').addEventListener('click', generate);
     $('#btn-undo').addEventListener('click', undo);
     $('#btn-clear-month').addEventListener('click', clearMonth);
+    $('#period-form').addEventListener('submit', insertPeriod);
     $('#btn-print').addEventListener('click', function () { window.print(); });
     $('#btn-csv').addEventListener('click', exportCsv);
     document.addEventListener('keydown', function (ev) {

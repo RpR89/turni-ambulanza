@@ -290,6 +290,11 @@ main { padding: 16px 20px 40px; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+.period { margin-bottom: 12px; padding: 10px 16px; }
+.period summary { cursor: pointer; font-weight: 600; }
+.period[open] summary { margin-bottom: 10px; }
+.period .note { margin: 10px 0 0; }
+
 .print-only { display: none; }
 
 @media (max-width: 900px) {

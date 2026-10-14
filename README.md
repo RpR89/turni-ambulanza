@@ -69,21 +69,23 @@ e non c'è un server con i dati.
 
 ## Come si usa
 
-Basta aprire `index.html` con un doppio clic, oppure pubblicarla online:
+L'app è online su **https://turni-ambulanza.vercel.app**.
+In alternativa basta aprire `index.html` con un doppio clic.
 
-1. Unisci questo branch su `main`.
-2. Su GitHub vai in **Settings → Pages** e alla voce *Source* scegli **GitHub Actions**.
-3. A ogni modifica su `main` il sito viene pubblicato su `https://<utente>.github.io/turni-ambulanza/`.
+Il sito è pubblicato da Vercel: a ogni modifica sul ramo di produzione viene aggiornato da solo,
+e per ogni pull request Vercel crea un'anteprima da provare prima di unirla.
+Non serve nessuna build: Vercel pubblica i file così come sono.
 
 > I nomi e i turni non finiscono online: restano salvati solo nel browser di chi usa l'app.
-> Il link pubblica soltanto il programma.
+> Il link pubblica soltanto il programma. Non caricare nel repository i file di backup
+> (`turni-backup-….json`), perché contengono i dati veri.
 
 ## Sviluppo
 
 Non ci sono dipendenze né build: è HTML, CSS e JavaScript semplici.
 
 ```
-npm test     # test delle regole (Node 18+)
+npm test     # test delle regole (Node 18+), eseguiti anche da GitHub Actions a ogni push
 npm start    # server locale su http://localhost:8080
 ```
 

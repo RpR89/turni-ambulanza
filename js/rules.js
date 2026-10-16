@@ -134,6 +134,11 @@
 
   function codeOn(state, empId, key) { return codeOf(empAssignments(state, empId)[key]); }
 
+  // Turno inserito dalla proposta automatica (e non toccato a mano da allora).
+  function isAuto(state, empId, key) {
+    return !!(state.auto && state.auto[empId] && state.auto[empId][key]);
+  }
+
   // Casella bloccata: la proposta automatica non la cambia mai (né la riempie se è vuota).
   function isLocked(state, empId, key) {
     return !!(state.locks && state.locks[empId] && state.locks[empId][key]);
@@ -467,13 +472,18 @@
       assignments: JSON.parse(JSON.stringify(state.assignments || {})),
       locks: state.locks || {}
     };
-    // "Rifai proposta": toglie i turni G/N non bloccati del mese e li ricalcola.
-    // Ferie, malattia, permessi, richieste di riposo e formazione restano sempre.
+    // Turni inseriti dalla proposta automatica (gli altri sono stati scritti a mano).
+    var auto = JSON.parse(JSON.stringify(state.auto || {}));
+    // "Rifai proposta": toglie e ricalcola solo i turni G/N inseriti dalla proposta e non bloccati.
+    // I turni scritti a mano, ferie, malattia, permessi, richieste di riposo e formazione restano.
     if (opts && opts.regenerate) {
       work.employees.forEach(function (e) {
         var a = work.assignments[e.id] || {};
         monthDays(y, m).forEach(function (k) {
-          if (SHIFTS[codeOf(a[k])] && !isLocked(state, e.id, k)) delete a[k];
+          if (SHIFTS[codeOf(a[k])] && isAuto(state, e.id, k) && !isLocked(state, e.id, k)) {
+            delete a[k];
+            delete auto[e.id][k];
+          }
         });
       });
     }
@@ -577,7 +587,17 @@
         return codeOn(work, i.empId, d) !== codeOn(base, i.empId, d);
       });
     });
-    return { assignments: work.assignments, uncovered: uncovered, bypassed: finalSoft };
+    // Segna come automatici i turni messi (o spostati) dalla proposta.
+    work.employees.forEach(function (e) {
+      monthDays(y, m).forEach(function (k) {
+        var c = codeOn(work, e.id, k);
+        if (SHIFTS[c] && c !== codeOn(base, e.id, k)) {
+          if (!auto[e.id]) auto[e.id] = {};
+          auto[e.id][k] = true;
+        }
+      });
+    });
+    return { assignments: work.assignments, auto: auto, uncovered: uncovered, bypassed: finalSoft };
   }
 
   /*
@@ -714,6 +734,7 @@
     codeOf: codeOf,
     codeOn: codeOn,
     isLocked: isLocked,
+    isAuto: isAuto,
     workHoursOn: workHoursOn,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     toKey: toKey,

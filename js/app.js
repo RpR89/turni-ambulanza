@@ -17,7 +17,8 @@
       settings: JSON.parse(JSON.stringify(R.DEFAULT_SETTINGS)),
       employees: [],
       assignments: {},
-      locks: {}
+      locks: {},
+      auto: {}
     };
   }
 
@@ -44,6 +45,7 @@
     });
     base.assignments = s.assignments && typeof s.assignments === 'object' ? s.assignments : {};
     base.locks = s.locks && typeof s.locks === 'object' ? s.locks : {};
+    base.auto = s.auto && typeof s.auto === 'object' ? s.auto : {};
     return base;
   }
 
@@ -62,7 +64,7 @@
 
   var undoStack = [];
   function snapshot() {
-    undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks }));
+    undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto }));
     if (undoStack.length > 50) undoStack.shift();
   }
   function undo() {
@@ -70,6 +72,7 @@
     var snap = JSON.parse(undoStack.pop());
     state.assignments = snap.assignments;
     state.locks = snap.locks || {};
+    state.auto = snap.auto || {};
     save();
     renderMonth();
   }
@@ -148,10 +151,12 @@
 
   function sameEntry(a, b) { return JSON.stringify(a || '') === JSON.stringify(b || ''); }
 
+  // Scrittura a mano: la casella non conta più come inserita dalla proposta automatica.
   function setCell(empId, key, entry) {
     if (!state.assignments[empId]) state.assignments[empId] = {};
     if (entry) state.assignments[empId][key] = entry;
     else delete state.assignments[empId][key];
+    if (state.auto[empId]) delete state.auto[empId][key];
   }
 
   function getEntry(empId, key) {
@@ -253,7 +258,7 @@
         var wd = R.weekday(key);
         var cls = 'cell' + (code ? ' cell-' + code : '') + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
-          (R.isLocked(state, e.id, key) ? ' locked' : '');
+          (R.isLocked(state, e.id, key) ? ' locked' : '') + (R.isAuto(state, e.id, key) ? ' auto' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
           '" data-date="' + key + '" data-row="' + row + '" data-col="' + col + '"' +
           (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry) + '</td>';
@@ -408,8 +413,9 @@
   function paintCell(td) {
     var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
     var code = R.codeOf(entry);
-    td.className = td.className.replace(/ ?cell-[A-Z]| ?locked/g, '') + (code ? ' cell-' + code : '') +
-      (R.isLocked(state, td.getAttribute('data-emp'), td.getAttribute('data-date')) ? ' locked' : '');
+    var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
+    td.className = td.className.replace(/ ?cell-[A-Z]| ?locked| ?auto/g, '') + (code ? ' cell-' + code : '') +
+      (R.isLocked(state, emp, key) ? ' locked' : '') + (R.isAuto(state, emp, key) ? ' auto' : '');
     td.innerHTML = cellHtml(entry);
   }
 
@@ -558,8 +564,9 @@
   function generate(regenerate) {
     if (!activeEmployees().length) return toast('Aggiungi prima i dipendenti');
     var msg = regenerate
-      ? 'Rifare la proposta di ' + MONTHS[view.m - 1] + '?\nI turni G e N NON bloccati vengono ricalcolati da capo. ' +
-        'Restano i turni bloccati 🔒, ferie, malattia, permessi, richieste di riposo e formazione. Puoi sempre annullare.'
+      ? 'Rifare la proposta di ' + MONTHS[view.m - 1] + '?\nVengono ricalcolati SOLO i turni inseriti dalla proposta ' +
+        'automatica (in corsivo). Restano i turni scritti a mano, quelli bloccati 🔒, ferie, malattia, permessi, ' +
+        'richieste di riposo e formazione. Puoi sempre annullare.'
       : 'Riempire automaticamente i turni scoperti di ' + MONTHS[view.m - 1] + '?\n' +
         'I turni già inseriti non vengono toccati. Puoi sempre annullare.';
     if (!confirm(msg)) return;
@@ -572,6 +579,7 @@
     snapshot();
     var res = R.generateMonth(state, view.y, view.m, { regenerate: !!regenerate });
     state.assignments = res.assignments;
+    state.auto = res.auto;
     save();
     renderMonth();
     var bypassNote = res.bypassed.length ? ' ' + res.bypassed.length +
@@ -636,17 +644,19 @@
       (locked.length ? ' ' + locked.length + ' giorni bloccati 🔒 lasciati com\'erano.' : ''));
   }
 
+  // Reset completo: cancella tutto il mese, anche i turni scritti a mano. Restano solo le caselle bloccate.
   function clearMonth() {
-    if (!confirm('Cancellare tutti i turni, ferie e malattie di ' + MONTHS[view.m - 1] + ' ' + view.y +
-      '?\nLe caselle bloccate 🔒 restano.')) return;
+    if (!confirm('RESET COMPLETO di ' + MONTHS[view.m - 1] + ' ' + view.y + '?\n' +
+      'Vengono cancellati TUTTI i turni, anche quelli inseriti a mano, e ferie, malattie, permessi, ' +
+      'richieste di riposo e formazione.\nRestano solo le caselle bloccate 🔒. Puoi annullare con "Annulla".')) return;
     snapshot();
     var days = R.monthDays(view.y, view.m);
     Object.keys(state.assignments).forEach(function (id) {
-      days.forEach(function (k) { if (!R.isLocked(state, id, k)) delete state.assignments[id][k]; });
+      days.forEach(function (k) { if (!R.isLocked(state, id, k)) setCell(id, k, ''); });
     });
     save();
     renderMonth();
-    toast('Mese svuotato. Puoi annullare con "Annulla".');
+    toast('Reset completo fatto. Puoi annullare con "Annulla".');
   }
 
   function exportCsv() {

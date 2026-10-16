@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=2.0">
+  <link rel="stylesheet" href="css/style.css?v=2.1">
 </head>
 <body>
   <header class="topbar no-print">
@@ -14,8 +14,75 @@
       <button class="tab active" data-tab="turni">Turni</button>
       <button class="tab" data-tab="dipendenti">Dipendenti</button>
       <button class="tab" data-tab="impostazioni">Impostazioni</button>
+      <button class="tab" data-tab="admin" id="tab-admin-btn" hidden>Amministrazione</button>
     </nav>
+    <div id="userbar" class="userbar" hidden></div>
   </header>
+
+  <!-- ================= ACCESSO (solo con il back end attivo) ================= -->
+  <div id="auth-screen" class="auth-screen" hidden>
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img id="auth-logo" alt="Croce Rossa Italiana">
+        <div><div class="auth-org">Croce Rossa Italiana</div><div class="auth-committee">Comitato di Trento</div></div>
+      </div>
+      <h1 class="auth-title">Turni Ambulanza</h1>
+      <div id="auth-tabs" class="auth-tabs">
+        <button type="button" class="auth-tab active" data-mode="login">Accedi</button>
+        <button type="button" class="auth-tab" data-mode="signup">Registrati</button>
+      </div>
+      <p id="auth-message" class="auth-message" hidden></p>
+
+      <form id="login-form" data-auth="login" class="auth-form">
+        <label>Email <input name="email" type="email" autocomplete="username" placeholder="nome.cognome@critn.it" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary">Accedi</button>
+        <a href="#" data-goto-mode="forgot" class="auth-link">Password dimenticata?</a>
+      </form>
+
+      <form id="signup-form" data-auth="signup" class="auth-form" hidden>
+        <div class="auth-row">
+          <label>Nome <input name="first_name" autocomplete="given-name" required></label>
+          <label>Cognome <input name="last_name" autocomplete="family-name" required></label>
+        </div>
+        <label>Email del comitato <input name="email" type="email" autocomplete="email" placeholder="nome.cognome@critn.it" required>
+          <small>Solo indirizzi @critn.it</small></label>
+        <label>Unità di appartenenza <select name="unit" id="su-unit" required></select></label>
+        <label>Ruolo
+          <select name="role">
+            <option value="referente">Referente</option>
+            <option value="vice_referente">Vice referente</option>
+          </select>
+        </label>
+        <div class="auth-row">
+          <label>Password <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+            <small>Almeno 8 caratteri</small></label>
+          <label>Ripeti password <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
+        </div>
+        <label class="check"><input type="checkbox" name="privacy" required>
+          <span>Ho letto l'<a href="privacy.html" target="_blank" rel="noopener">informativa sul trattamento dei dati personali</a></span></label>
+        <button class="primary">Registrati</button>
+      </form>
+
+      <form id="forgot-form" data-auth="forgot" class="auth-form" hidden>
+        <p class="note">Inserisci il tuo indirizzo: riceverai un link per scegliere una nuova password.</p>
+        <label>Email <input name="email" type="email" autocomplete="username" required></label>
+        <button class="primary">Invia il link</button>
+        <a href="#" data-goto-mode="login" class="auth-link">Torna all'accesso</a>
+      </form>
+
+      <form id="newpass-form" data-auth="newpass" class="auth-form" hidden>
+        <p class="note">Scegli la password per il tuo account.</p>
+        <label>Nuova password <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>Ripeti password <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="primary">Salva password</button>
+      </form>
+
+      <div data-auth="info" hidden><a href="#" data-goto-mode="login" class="auth-link">Torna all'accesso</a></div>
+
+      <p class="auth-foot"><a href="privacy.html" target="_blank" rel="noopener">Informativa privacy e cookie</a></p>
+    </div>
+  </div>
 
   <main>
     <!-- ================= TURNI ================= -->
@@ -141,6 +208,37 @@
       </div>
     </section>
 
+    <!-- ================= AMMINISTRAZIONE ================= -->
+    <section id="tab-admin" class="panel">
+      <div class="card">
+        <h3>Unità di appartenenza</h3>
+        <form id="unit-add-form" class="row-form">
+          <label class="field">Nuova unità <input name="name" placeholder="es. U.T. Canal San Bovo" required></label>
+          <button class="primary">Aggiungi unità</button>
+        </form>
+        <table id="units-table" class="list"></table>
+      </div>
+      <div class="card">
+        <h3>Aggiungi un utente</h3>
+        <p class="note">L'utente riceve una mail di invito per scegliere la password. Solo indirizzi @critn.it.</p>
+        <form id="invite-form" class="row-form">
+          <label class="field">Nome <input name="first_name" required></label>
+          <label class="field">Cognome <input name="last_name" required></label>
+          <label class="field">Email <input name="email" type="email" placeholder="nome.cognome@critn.it" required></label>
+          <label class="field">Unità <select name="unit" required></select></label>
+          <label class="field">Ruolo
+            <select name="role"><option value="referente">Referente</option><option value="vice_referente">Vice referente</option></select>
+          </label>
+          <button class="primary">Invia invito</button>
+        </form>
+      </div>
+      <div class="card">
+        <h3>Utenti</h3>
+        <p class="note">Le modifiche si salvano subito. Togliendo "Attivo" l'utente non può più vedere né modificare i turni.</p>
+        <table id="users-table" class="list"></table>
+      </div>
+    </section>
+
     <!-- ================= IMPOSTAZIONI ================= -->
     <section id="tab-impostazioni" class="panel">
       <div class="card">
@@ -201,13 +299,23 @@
     </section>
   </main>
 
-  <footer class="version no-print">Turni Ambulanza · versione 2.0 (ambulanze e turnazioni)</footer>
+  <div id="cookie-notice" class="cookie-notice no-print" hidden>
+    <span>Questo sito usa solo strumenti tecnici necessari al funzionamento (accesso e salvataggio dei dati):
+      nessun cookie di profilazione né di statistica.
+      <a href="privacy.html" target="_blank" rel="noopener">Informativa privacy e cookie</a></span>
+    <button type="button" id="cookie-ok" class="primary">Ho capito</button>
+  </div>
+
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 2.1 (accesso utenti)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/rules.js?v=2.0"></script>
-  <script src="js/logo.js?v=2.0"></script>
-  <script src="js/export-xlsx.js?v=2.0"></script>
-  <script src="js/app.js?v=2.0"></script>
+  <script src="js/config.js?v=2.1"></script>
+  <script src="js/vendor/supabase.min.js?v=2.1"></script>
+  <script src="js/rules.js?v=2.1"></script>
+  <script src="js/logo.js?v=2.1"></script>
+  <script src="js/export-xlsx.js?v=2.1"></script>
+  <script src="js/auth.js?v=2.1"></script>
+  <script src="js/app.js?v=2.1"></script>
 </body>
 </html>

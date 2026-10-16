@@ -72,10 +72,13 @@
     });
   }
 
-  var state = loadState();
+  var state = emptyState();
   var saveFailed = false;
+  // Con il back end attivo i dati vanno all'unità sul server invece che nel browser.
+  var persistHook = null;
 
   function save() {
+    if (persistHook) return persistHook(state);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       saveFailed = false;
@@ -110,7 +113,7 @@
 
   var now = new Date();
   var view = { y: now.getFullYear(), m: now.getMonth() + 1 };
-  var tool = (R.shiftCatalog(state).list[0] || { id: 'F' }).id;
+  var tool = 'G';
 
   // ---------- Utilità ----------
 
@@ -1239,5 +1242,32 @@
     if (!state.employees.length) showTab('dipendenti');
   }
 
-  init();
+  var started = false;
+
+  window.TurniApp = {
+    /*
+     * Avvia (o riavvia con altri dati) il tabellone.
+     * opts.state: dati iniziali (senza = quelli salvati nel browser);
+     * opts.persist: function(state) chiamata a ogni salvataggio (senza = salvataggio nel browser).
+     */
+    start: function (opts) {
+      opts = opts || {};
+      state = opts.state ? normalize(opts.state) : loadState();
+      persistHook = opts.persist || null;
+      undoStack = [];
+      if (!started) { started = true; init(); } else { renderAll(); }
+    },
+    // Dati salvati nel browser di questo computer (per importarli in un'unità).
+    localState: function () {
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? normalize(JSON.parse(raw)) : null;
+      } catch (e) { return null; }
+    },
+    getState: function () { return state; },
+    toast: toast
+  };
+
+  // Senza back end configurato l'app parte subito con i dati del browser, come prima.
+  if (!window.TurniAuthRequired) window.TurniApp.start();
 })();

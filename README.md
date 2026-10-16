@@ -98,7 +98,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   Con una sola ambulanza 24 ore il foglio è identico al modello.
   - Comprende le settimane che iniziano con un lunedì del mese (ottobre 2026: dal 5/10 al 1/11).
   - In ogni turno l'autista è scritto per primo; in *FORMAZIONE* chi ha un corso; in *ASSENZE*
-    ferie, malattia e permessi 104 (chi è assente più giorni resta nella stessa colonna).
+    ferie, malattia, permessi 104 e richieste di riposo (chi è assente più giorni resta nella stessa colonna).
   - I nomi sono quelli del campo *Nome nel tabellone* (scheda Dipendenti): se è vuoto si usa il cognome,
     con le iniziali del nome quando due dipendenti hanno lo stesso cognome (`BETTEGA GI.`, `BETTEGA CH.`).
   - Il titolo si cambia in *Impostazioni*. *Note*, *EXTRA* e *MANIFESTAZIONI* restano da compilare a mano.

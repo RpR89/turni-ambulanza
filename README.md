@@ -23,6 +23,12 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   in cui è in servizio. *Turnazione 24 ore* imposta subito `G` 07–19 e `N` 19–07 tutti i giorni;
   con *+ Turno* si aggiungono fasce con orari diversi. Un turno che passa la mezzanotte conta come notte.
   Senza modifiche c'è una sola ambulanza con `G` 07–19 e `N` 19–07 (come nelle versioni precedenti).
+- **Visualizzazione con più ambulanze** (scheda *Impostazioni*, sotto le ambulanze):
+  - *un solo tabellone*: ogni casella mostra i turni di tutte le ambulanze;
+  - *un tabellone per ambulanza*: nella scheda *Turni* scegli l'ambulanza da modificare (menu *Tabellone*).
+    Sotto compaiono, sbiaditi e in sola lettura, i tabelloni delle altre ambulanze, con i giorni allineati.
+    Nel tabellone scelto si inseriscono e cancellano solo i turni di quell'ambulanza; ferie, malattia, 104,
+    riposo e formazione valgono per tutte. Totali, controlli, proposta automatica ed Excel restano unici.
 - **Tabellone mensile**: una riga per dipendente e una colonna per giorno.
   Ogni casella può contenere:
   - uno o più **turni**, indicati con la loro sigla (es. `G`, `N`, `G2`);

@@ -125,6 +125,7 @@ main { padding: 16px 20px 40px; }
   margin-bottom: 12px;
 }
 .month-nav { display: flex; align-items: center; gap: 8px; }
+.amb-view { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .month-nav h2 { margin: 0; min-width: 170px; text-align: center; font-size: 20px; }
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .tools-label { color: var(--muted); margin-right: 4px; }
@@ -412,3 +413,10 @@ body.auth-mode .topbar, body.auth-mode main, body.auth-mode footer.version { dis
 .auth-row > label { min-width: 0; }
 .auth-form input, .auth-form select { width: 100%; }
 .auth-form label.check input { width: auto; }
+
+/* Vista per ambulanza: i tabelloni delle altre ambulanze, sbiaditi e in sola lettura */
+.other-grids .other-grid { margin-top: 16px; }
+.other-grids h3 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; margin: 0 0 6px; }
+.other-grids h3 small { color: var(--muted); font-weight: normal; }
+.grid.faded { opacity: .45; pointer-events: none; user-select: none; }
+.grid-view-field { margin-top: 14px; max-width: 460px; }

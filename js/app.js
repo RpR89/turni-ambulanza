@@ -199,21 +199,52 @@
     return (state.assignments[empId] || {})[key] || '';
   }
 
-  function cellHtml(entry) {
+  // ---------- Vista per ambulanza ----------
+  // Con più ambulanze si può lavorare su un tabellone alla volta: quelli delle altre
+  // compaiono sotto, sbiaditi e in sola lettura. Ferie, malattia, ecc. valgono per tutti.
+
+  function perAmbulance() {
+    return state.settings.gridView === 'perAmbulance' && ambulances().length > 1;
+  }
+
+  // Id dell'ambulanza del tabellone che si sta modificando; null = tutte insieme.
+  function viewAmb() {
+    if (!perAmbulance()) return null;
+    if (!ambulances().some(function (a) { return a.id === view.amb; })) view.amb = ambulances()[0].id;
+    return view.amb;
+  }
+
+  function ambName(a) {
+    return 'Ambulanza ' + (a.code || ambulances().indexOf(a) + 1);
+  }
+
+  // Turni di una voce, solo quelli dell'ambulanza indicata (tutti se ambId è null).
+  function idsFor(entry, ambId) {
+    var ids = R.shiftIdsOf(state, entry);
+    return ambId ? ids.filter(function (id) { return R.shiftInfo(state, id).ambId === ambId; }) : ids;
+  }
+
+  function cellAuto(empId, key, ambId) {
+    var ids = idsFor(getEntry(empId, key), ambId);
+    var auto = R.autoIdsOn(state, empId, key);
+    return ids.length > 0 && ids.every(function (id) { return auto.indexOf(id) >= 0; });
+  }
+
+  function cellHtml(entry, ambId) {
     var code = R.codeOf(entry);
     if (code === 'C') return 'C<small>' + fmt(entry.hours) + 'h</small>';
     if (code === 'P') return '104';
     if (code) return code;
-    var ids = R.shiftIdsOf(state, entry);
+    var ids = idsFor(entry, ambId);
     var labels = ids.map(function (id) { return esc(R.shiftInfo(state, id).label); });
     return ids.length > 1 ? '<span class="multi">' + labels.join('<br>') + '</span>' : labels.join('');
   }
 
   // Colore della casella: voce (F, M, …) oppure turno di giorno (G) / di notte (N).
-  function cellClass(entry) {
+  function cellClass(entry, ambId) {
     var code = R.codeOf(entry);
     if (code) return ' cell-' + code;
-    var ids = R.shiftIdsOf(state, entry);
+    var ids = idsFor(entry, ambId);
     if (!ids.length) return '';
     var night = ids.some(function (id) { return R.shiftInfo(state, id).night; });
     return (night ? ' cell-N' : ' cell-G') + (ids.length > 1 ? ' cell-multi' : '');
@@ -232,7 +263,15 @@
   function renderMonth() {
     var title = MONTHS[view.m - 1] + ' ' + view.y;
     $('#month-title').textContent = title;
-    $('#print-title').textContent = 'Turni ' + title;
+    var amb = viewAmb();
+    var cur = amb && ambulances().filter(function (a) { return a.id === amb; })[0];
+    $('#print-title').textContent = 'Turni ' + title + (cur ? ' · ' + ambName(cur) : '');
+    $('#amb-view').hidden = !amb;
+    if (amb) {
+      $('#amb-view-sel').innerHTML = ambulances().map(function (a) {
+        return '<option value="' + esc(a.id) + '"' + (a.id === amb ? ' selected' : '') + '>' + esc(ambName(a)) + '</option>';
+      }).join('');
+    }
     $all('.max-week').forEach(function (el) { el.textContent = state.settings.maxWeeklyHours; });
 
     var issues = R.validateMonth(state, view.y, view.m);
@@ -243,6 +282,36 @@
   }
 
   function renderGrid(issues) {
+    var amb = viewAmb();
+    $('#grid').innerHTML = gridHtml(issues, amb, false);
+    $('#other-grids').innerHTML = amb ? ambulances().filter(function (a) { return a.id !== amb; }).map(function (a) {
+      return '<section class="other-grid"><h3>' + esc(ambName(a)) + ' <small>sola consultazione</small> ' +
+        '<button type="button" data-show-amb="' + esc(a.id) + '">Modifica questo tabellone</button></h3>' +
+        '<div class="grid-wrap"><table class="grid faded">' + gridHtml(issues, a.id, true) + '</table></div></section>';
+    }).join('') : '';
+    alignOtherGrids();
+  }
+
+  // I giorni dei tabelloni sbiaditi stanno esattamente sotto quelli del tabellone principale.
+  function alignOtherGrids() {
+    var tables = $all('#other-grids table');
+    var widths = $all('#grid thead th').map(function (th) { return th.getBoundingClientRect().width; });
+    if (!tables.length || !widths[0]) return;
+    var total = $('#grid').getBoundingClientRect().width;
+    tables.forEach(function (t) {
+      var old = t.querySelector('colgroup');
+      if (old) old.remove();
+      t.style.tableLayout = 'fixed';
+      t.style.width = total + 'px';
+      t.insertAdjacentHTML('afterbegin', '<colgroup>' + widths.map(function (w) {
+        return '<col style="width:' + w + 'px">';
+      }).join('') + '</colgroup>');
+    });
+  }
+
+  // Tabellone del mese. ambId: solo i turni di quell'ambulanza (null = tutti);
+  // readOnly: copia sbiadita da consultare (senza totali, blocchi e caselle modificabili).
+  function gridHtml(issues, ambId, readOnly) {
     var days = R.monthDays(view.y, view.m);
     var emps = activeEmployees();
     var todayKey = R.toKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
@@ -267,7 +336,8 @@
       var cls = (wd >= 5 ? 'weekend' : '') + (key === todayKey ? ' today' : '') + (wd === 0 ? ' monday' : '');
       h += '<th class="day ' + cls + '"><span>' + WEEKDAYS[wd] + '</span>' + (+key.slice(8)) + '</th>';
     });
-    h += '<th class="sum" title="Turni di notte nel mese">Notti</th>' +
+    if (readOnly) h += '<th colspan="7"></th></tr></thead><tbody>';
+    else h += '<th class="sum" title="Turni di notte nel mese">Notti</th>' +
       '<th class="sum" title="Weekend lavorati (basta il sabato o la domenica)">Week<br>end</th>' +
       '<th class="sum" title="Ore dei turni G e N">Turni<br>h</th>' +
       '<th class="sum" title="Ore di formazione">Form.<br>h</th>' +
@@ -289,6 +359,17 @@
           used + '/' + max + '</span>';
       }
       var info = R.ROLES[e.role] + (e.weeklyHours !== 38 ? ' · ' + contractLabel(e.weeklyHours) : '');
+      if (readOnly) {
+        h += '<tr><th class="name' + (R.isDriver(e) ? ' driver' : '') + '" title="' + esc(info) + '">' +
+          (R.isDriver(e) ? '<span class="drv" title="Autista soccorritore">A</span>' : '') + esc(e.name) + '</th>';
+        days.forEach(function (key) {
+          var entry = getEntry(e.id, key), wd = R.weekday(key);
+          h += '<td class="cell' + cellClass(entry, ambId) + (wd >= 5 ? ' weekend' : '') + (wd === 0 ? ' monday' : '') +
+            (cellAuto(e.id, key, ambId) ? ' auto' : '') + '">' + cellHtml(entry, ambId) + '</td>';
+        });
+        h += '<td colspan="7"></td></tr>';
+        return;
+      }
       h += '<tr><th class="name' + (R.isDriver(e) ? ' driver' : '') + '" title="' + esc(info) + '">' +
         '<button type="button" class="row-lock' + (rowLocked(e.id) ? ' on' : '') + '" data-lock-emp="' + esc(e.id) +
         '" title="' + (rowLocked(e.id) ? 'Sblocca' : 'Blocca') + ' tutto il mese di questo dipendente">' +
@@ -301,12 +382,12 @@
         var softs = cellSoft[e.id + '|' + key];
         var tips = (errs || []).concat(softs || []);
         var wd = R.weekday(key);
-        var cls = 'cell' + cellClass(entry) + (wd >= 5 ? ' weekend' : '') +
+        var cls = 'cell' + cellClass(entry, ambId) + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
-          (R.isLocked(state, e.id, key) ? ' locked' : '') + (R.isAuto(state, e.id, key) ? ' auto' : '');
+          (R.isLocked(state, e.id, key) ? ' locked' : '') + (cellAuto(e.id, key, ambId) ? ' auto' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
           '" data-date="' + key + '" data-row="' + row + '" data-col="' + col + '"' +
-          (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry) + '</td>';
+          (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry, ambId) + '</td>';
       });
       var bal = s.balance;
       var maxWe = +state.settings.maxWeekendsPerMonth;
@@ -325,7 +406,7 @@
     // Copertura: una riga per ogni turno di ogni ambulanza (persone presenti; rosso se mancano
     // persone o l'autista, "–" nei giorni in cui il turno non è previsto).
     var crew = +state.settings.crewSize || 0, minDrivers = +state.settings.minDriversPerShift;
-    R.shiftCatalog(state).list.forEach(function (sh, i) {
+    R.shiftCatalog(state).list.filter(function (sh) { return !ambId || sh.ambId === ambId; }).forEach(function (sh, i) {
       h += '<tr class="' + (i === 0 ? 'first-cov' : '') + '"><th class="name" title="' + esc(shiftTitle(sh)) + '">Copertura ' +
         esc(sh.label) + ' <small>' + esc((sh.ambCode ? sh.ambCode + ' · ' : '') + sh.startText + '–' + sh.endText) +
         '</small></th>';
@@ -343,9 +424,7 @@
       });
       h += '<td colspan="7"></td></tr>';
     });
-    h += '</tfoot>';
-
-    $('#grid').innerHTML = h;
+    return h + '</tfoot>';
   }
 
   // Notti e weekend medi per un tempo pieno, per evidenziare chi si discosta troppo.
@@ -463,6 +542,19 @@
       setCell(emp, key, R.shiftEntry(ids));
       return true;
     }
+    var amb = viewAmb();
+    var others = amb ? R.shiftIdsOn(state, emp, key).filter(function (id) { return R.shiftInfo(state, id).ambId !== amb; }) : [];
+    if (others.length && (code === '' || isShiftCode(code))) {
+      // Tabellone di un'ambulanza: si cambiano solo i suoi turni, quelli delle altre restano.
+      var next = R.shiftEntry(others.concat(code ? [code] : []).sort(function (a, b) {
+        return R.shiftInfo(state, a).order - R.shiftInfo(state, b).order;
+      }));
+      if (sameEntry(getEntry(emp, key), next)) return false;
+      var keepAuto = R.autoIdsOn(state, emp, key).filter(function (id) { return others.indexOf(id) >= 0; });
+      setCell(emp, key, next);
+      if (keepAuto.length) state.auto[emp][key] = keepAuto;
+      return true;
+    }
     var entry = makeEntry(code);
     if (sameEntry(getEntry(emp, key), entry)) return false;
     if (code === 'P' && !(empById(emp) || {}).has104) {
@@ -476,9 +568,10 @@
   function paintCell(td) {
     var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
-    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?locked| ?auto/g, '') + cellClass(entry) +
-      (R.isLocked(state, emp, key) ? ' locked' : '') + (R.isAuto(state, emp, key) ? ' auto' : '');
-    td.innerHTML = cellHtml(entry);
+    var amb = viewAmb();
+    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?locked| ?auto/g, '') + cellClass(entry, amb) +
+      (R.isLocked(state, emp, key) ? ' locked' : '') + (cellAuto(emp, key, amb) ? ' auto' : '');
+    td.innerHTML = cellHtml(entry, amb);
   }
 
   function commit(focusEmp, focusDate) {
@@ -521,8 +614,9 @@
           ? 'remove' : 'add';
       } else {
         var cur = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
+        var mine = viewAmb() && isShiftCode(tool) ? idsFor(cur, viewAmb()) : null;
         // Cliccare una casella che contiene già il valore scelto la svuota.
-        painting = sameEntry(cur, makeEntry(tool)) ? '' : tool;
+        painting = (mine ? mine.length === 1 && mine[0] === tool : sameEntry(cur, makeEntry(tool))) ? '' : tool;
       }
       if (applyToCell(td, painting, paintMode)) paintCell(td);
     });
@@ -592,9 +686,20 @@
   }
 
   // Tasto da tastiera → turno con quella sigla (es. G, N); null se nessuno.
+  // Nel tabellone di un'ambulanza la lettera vale per i suoi turni (es. G → G2).
   function shiftByLetter(k) {
-    var found = R.shiftCatalog(state).list.filter(function (sh) { return sh.label.toUpperCase() === k; })[0];
-    return found ? found.id : null;
+    var list = visibleShifts();
+    var found = list.filter(function (sh) { return sh.label.toUpperCase() === k; });
+    if (!found.length && viewAmb()) {
+      found = list.filter(function (sh) { return sh.label.toUpperCase().charAt(0) === k; });
+      if (found.length > 1) found = [];
+    }
+    return found.length ? found[0].id : null;
+  }
+
+  function visibleShifts() {
+    var amb = viewAmb();
+    return R.shiftCatalog(state).list.filter(function (sh) { return !amb || sh.ambId === amb; });
   }
 
   function selectTool(code) {
@@ -604,7 +709,13 @@
 
   // Pulsanti dei turni: uno per ogni turno di ogni ambulanza.
   function renderShiftTools() {
-    var list = R.shiftCatalog(state).list;
+    var list = visibleShifts();
+    // Cambiando ambulanza resta scelto il turno corrispondente (es. il secondo turno → il secondo turno).
+    if (isShiftCode(tool) && !list.some(function (sh) { return sh.id === tool; })) {
+      var old = R.shiftInfo(state, tool);
+      var pos = R.shiftCatalog(state).list.filter(function (sh) { return sh.ambId === old.ambId; }).indexOf(old);
+      tool = list[pos] ? list[pos].id : list.length ? list[0].id : 'F';
+    }
     $('#shift-tools').innerHTML = list.map(function (sh) {
       return '<button class="tool ' + (sh.night ? 'cell-N' : 'cell-G') + '" data-tool="' + esc(sh.id) + '" title="' +
         esc(shiftTitle(sh) + ' — Maiusc+clic per aggiungerlo agli altri turni del giorno') + '">' + esc(sh.label) +
@@ -1083,6 +1194,8 @@
         'per la seconda ambulanza, così nel tabellone si capisce di quale turno si tratta.</p>';
     }
     $('#ambulances').innerHTML = h;
+    $('#grid-view-field').hidden = ambulances().length < 2;
+    $('#grid-view').value = state.settings.gridView === 'perAmbulance' ? 'perAmbulance' : 'single';
   }
 
   function initAmbulances() {
@@ -1165,6 +1278,16 @@
       }
     });
 
+    $('#grid-view').addEventListener('change', function (ev) {
+      state.settings.gridView = ev.target.value;
+      save();
+      renderShiftTools();
+      renderMonth();
+      toast(ev.target.value === 'perAmbulance'
+        ? 'Nella scheda Turni scegli l\'ambulanza da modificare: le altre compaiono sotto, sbiadite.'
+        : 'Un solo tabellone con i turni di tutte le ambulanze.');
+    });
+
     $('#add-amb').addEventListener('click', function () {
       var amb = { id: newId('A'), code: '', shifts: [] };
       ambulances().push(amb);
@@ -1179,6 +1302,7 @@
     $all('.tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
     $all('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'tab-' + name); });
     if (name === 'dipendenti' && !state.employees.length) $('#emp-name').focus();
+    if (name === 'turni') alignOtherGrids();
   }
 
   function renderAll() {
@@ -1212,10 +1336,22 @@
     $('#prev-month').addEventListener('click', function () { changeMonth(-1); });
     $('#next-month').addEventListener('click', function () { changeMonth(1); });
     $('#today').addEventListener('click', function () {
-      view = { y: now.getFullYear(), m: now.getMonth() + 1 };
+      view = { y: now.getFullYear(), m: now.getMonth() + 1, amb: view.amb };
       renderMonth();
       renderEmployees();
       renderPeriodForm();
+    });
+    function showAmb(id) {
+      view.amb = id;
+      renderShiftTools();
+      renderMonth();
+    }
+    $('#amb-view-sel').addEventListener('change', function (ev) { showAmb(ev.target.value); });
+    $('#other-grids').addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-show-amb]');
+      if (!b) return;
+      showAmb(b.getAttribute('data-show-amb'));
+      $('#grid').scrollIntoView({ block: 'nearest' });
     });
     $('#btn-generate').addEventListener('click', function () { generate(false); });
     $('#btn-regenerate').addEventListener('click', function () { generate(true); });
@@ -1234,6 +1370,7 @@
       }
     });
 
+    window.addEventListener('resize', alignOtherGrids);
     initGridEvents();
     initEmployees();
     initSettings();

@@ -38,9 +38,13 @@ test('notte seguita da giorno il mattino dopo viola il riposo', () => {
 
 test('giorno e notte nello stesso giorno viola il riposo', () => {
   const s = makeState([FT], { a: { '2026-10-12': 'G' } });
-  assert.equal(R.blockers(s, 'a', '2026-10-12', 'N').length, 0); // stesso giorno: viene sostituito
-  s.assignments.a['2026-10-11'] = 'N';
-  assert.equal(R.blockers(s, 'a', '2026-10-12', 'G').length, 1);
+  // aggiungere la notte allo stesso giorno: 0 h di riposo e 24 h nel giorno
+  assert.equal(R.blockers(s, 'a', '2026-10-12', 'N').length, 2);
+  const s2 = makeState([FT], { a: { '2026-10-11': 'N' } });
+  assert.equal(R.blockers(s2, 'a', '2026-10-12', 'G').length, 1);
+  s.assignments.a['2026-10-12'] = ['G', 'N'];
+  const errs = R.validateMonth(s, 2026, 10).filter(i => i.level === 'error' && i.type !== 'driver').map(i => i.type).sort();
+  assert.deepEqual(errs, ['daily', 'rest']);
 });
 
 test('turni consecutivi dello stesso tipo hanno 12 h di riposo', () => {
@@ -79,9 +83,9 @@ test('ferie e malattia contano solo nei giorni lun–ven', () => {
 });
 
 test('copertura: segnala turni scoperti', () => {
-  const s = makeState([FT], {}, { staffPerShift: { G: 1, N: 0 } });
+  const s = makeState([FT], {}, { crewSize: 1 });
   const cov = R.validateMonth(s, 2026, 10).filter(i => i.type === 'coverage');
-  assert.equal(cov.length, 31);
+  assert.equal(cov.length, 62); // G e N scoperti tutti i 31 giorni
 });
 
 test('la proposta automatica rispetta tutti i vincoli', () => {
@@ -189,7 +193,7 @@ test('la proposta automatica mette sempre un autista e poi preferisce i soccorri
 });
 
 test('senza autisti disponibili il turno viene comunque coperto e segnalato', () => {
-  const s = makeState([SOC, SOC2], {}, { staffPerShift: { G: 2, N: 0 } });
+  const s = makeState([SOC, SOC2], {}, { ambulances: [{ id: 'A1', code: '12345', shifts: [R.preset24h()[0]] }] });
   const res = R.generateMonth(s, 2026, 10);
   assert.ok(res.uncovered.some(u => u.driver));
   assert.equal(R.staffOn(makeState([SOC, SOC2], res.assignments), '2026-10-01', 'G').length, 2);
@@ -357,4 +361,89 @@ test('formazione: il giorno del corso non si può smontare notte', () => {
   const res = R.generateMonth(makeState(employees, fixed), 2026, 10);
   const out = makeState(employees, res.assignments);
   assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+});
+
+// ---------- Ambulanze e fasce orarie ----------
+
+function ambState(employees, assignments, ambulances, settings) {
+  return makeState(employees, assignments, Object.assign({ ambulances }, settings || {}));
+}
+
+const WEEKDAYS_ONLY = [true, true, true, true, true, false, false];
+
+test('catalogo turni: orari, durata, notte e giorni della settimana', () => {
+  const ambs = [
+    { id: 'A1', code: '12345', shifts: R.preset24h() },
+    { id: 'A2', code: '67890', shifts: [
+      { id: 's1', name: 'MATTINA', label: 'M2', start: '08:00', end: '14:00', days: WEEKDAYS_ONLY },
+      { id: 's2', name: 'SERA', label: 'S2', start: '20:30', end: '02:30', days: WEEKDAYS_ONLY }
+    ] }
+  ];
+  const s = ambState([FT], {}, ambs);
+  const cat = R.shiftCatalog(s);
+  assert.equal(cat.list.length, 4);
+  assert.equal(cat.byId.s1.hours, 6);
+  assert.equal(cat.byId.s1.night, false);
+  assert.equal(cat.byId.s2.hours, 6);
+  assert.equal(cat.byId.s2.night, true);
+  assert.equal(cat.byId.N.ambCode, '12345');
+  // sabato: solo i turni dell'ambulanza 24 h
+  assert.deepEqual(R.shiftsForDay(s, '2026-10-17').map(x => x.id), ['G', 'N']);
+  assert.deepEqual(R.shiftsForDay(s, '2026-10-16').map(x => x.id), ['G', 's1', 'N', 's2']);
+  // senza ambulanze configurate vale la 24 h predefinita
+  assert.deepEqual(R.shiftCatalog(makeState([FT], {})).list.map(x => x.id), ['G', 'N']);
+});
+
+test('copertura per ambulanza: solo nei giorni previsti, 2 persone con 1 autista', () => {
+  const ambs = [{ id: 'A2', code: '67890', shifts: [
+    { id: 's1', name: 'MATTINA', label: 'M2', start: '08:00', end: '14:00', days: WEEKDAYS_ONLY }
+  ] }];
+  const s = ambState([FT, SOC], { a: { '2026-10-17': 's1' } }, ambs);
+  const cov = R.validateMonth(s, 2026, 10).filter(i => i.type === 'coverage');
+  assert.equal(cov.filter(i => /scoperto/.test(i.message)).length, 22); // 22 giorni lun-ven
+  assert.equal(cov.filter(i => /non previsto/.test(i.message)).length, 1); // sabato 17
+});
+
+test('più turni nello stesso giorno: ammessi se rispettano riposo e 12 ore', () => {
+  const ambs = [{ id: 'A2', code: '67890', shifts: [
+    { id: 'm', name: 'MATTINA', label: 'M', start: '06:00', end: '09:00', days: R.preset24h()[0].days },
+    { id: 's', name: 'SERA', label: 'S', start: '20:00', end: '23:00', days: R.preset24h()[0].days },
+    { id: 'p', name: 'POMERIGGIO', label: 'P2', start: '12:00', end: '20:00', days: R.preset24h()[0].days }
+  ] }];
+  const s = ambState([FT], { a: { '2026-10-12': 'm' } }, ambs);
+  assert.deepEqual(R.blockers(s, 'a', '2026-10-12', 's'), []); // 11 h di riposo, 6 h nel giorno
+  assert.equal(R.blockers(s, 'a', '2026-10-12', 'p').length, 1); // solo 3 h di riposo
+  s.assignments.a['2026-10-12'] = ['m', 's'];
+  assert.equal(R.monthSummary(s, FT, 2026, 10).worked, 6);
+  assert.equal(R.validateMonth(s, 2026, 10).filter(i => i.level === 'error' && i.type !== 'driver').length, 0);
+});
+
+test('proposta con due ambulanze: tutti i turni coperti senza errori', () => {
+  const ambs = [
+    { id: 'A1', code: '12345', shifts: R.preset24h() },
+    { id: 'A2', code: '67890', shifts: [
+      { id: 'x1', name: 'GIORNO', label: 'G2', start: '08:00', end: '20:00', days: WEEKDAYS_ONLY }
+    ] }
+  ];
+  const employees = [];
+  for (let i = 0; i < 16; i++) {
+    employees.push({ id: 'e' + i, name: 'Dip ' + i, weeklyHours: 38, role: i < 8 ? 'autista' : 'soccorritore' });
+  }
+  const s = ambState(employees, {}, ambs);
+  const res = R.generateMonth(s, 2026, 11);
+  const out = ambState(employees, res.assignments, ambs);
+  const issues = R.validateMonth(out, 2026, 11);
+  assert.equal(issues.filter(i => i.level === 'error').length, 0);
+  assert.equal(res.uncovered.length, 0);
+  R.monthDays(2026, 11).forEach(k => {
+    R.shiftsForDay(out, k).forEach(sh => {
+      const staff = R.staffOn(out, k, sh.id);
+      assert.equal(staff.length, 2, k + ' ' + sh.id);
+      assert.ok(staff.some(R.isDriver), k + ' ' + sh.id);
+    });
+    // la seconda ambulanza lavora solo lun-ven
+    if (R.weekday(k) >= 5) assert.equal(R.staffOn(out, k, 'x1').length, 0);
+  });
+  // tutti i turni nuovi risultano automatici
+  assert.ok(Object.values(res.auto).some(m => Object.keys(m).length));
 });

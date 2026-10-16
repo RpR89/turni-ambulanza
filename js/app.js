@@ -40,6 +40,7 @@
       return {
         id: String(e.id), name: String(e.name || ''), weeklyHours: +e.weeklyHours || 38,
         role: e.role === 'autista' ? 'autista' : 'soccorritore',
+        shortName: e.shortName ? String(e.shortName) : '',
         has104: !!e.has104, active: e.active !== false
       };
     });
@@ -166,13 +167,6 @@
   function cellHtml(entry) {
     var code = R.codeOf(entry);
     if (code === 'C') return 'C<small>' + fmt(entry.hours) + 'h</small>';
-    if (code === 'P') return '104';
-    return code;
-  }
-
-  function cellText(entry) {
-    var code = R.codeOf(entry);
-    if (code === 'C') return 'C ' + fmt(entry.hours) + 'h';
     if (code === 'P') return '104';
     return code;
   }
@@ -670,25 +664,40 @@
     toast('Reset completo fatto. Puoi annullare con "Annulla".');
   }
 
-  function exportCsv() {
-    var days = R.monthDays(view.y, view.m);
-    var rows = [['Dipendente', 'Qualifica', 'Contratto'].concat(days.map(function (k) {
-      return WEEKDAYS[R.weekday(k)] + ' ' + (+k.slice(8));
-    }), ['Notti', 'Weekend', 'Ore turni', 'Ore formazione', 'Ore assenze', 'Ore previste', 'Saldo'])];
-    activeEmployees().forEach(function (e) {
-      var s = R.monthSummary(state, e, view.y, view.m);
-      rows.push([e.name, R.ROLES[e.role], contractLabel(e.weeklyHours)].concat(days.map(function (k) { return cellText(getEntry(e.id, k)); }),
-        [String(s.nights), String(s.weekends), fmt(s.worked), fmt(s.training), fmt(s.absence), fmt(s.target), fmtSigned(s.balance)]));
+  // ---------- Esporta Excel (tabellone turni) ----------
+
+  var excelLoading = null;
+
+  // ExcelJS è grande (~1 MB): si carica solo la prima volta che si esporta.
+  function loadExcelJS() {
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    if (!excelLoading) {
+      excelLoading = new Promise(function (resolve, reject) {
+        var sc = document.createElement('script');
+        sc.src = 'js/vendor/exceljs.min.js';
+        sc.onload = function () { resolve(window.ExcelJS); };
+        sc.onerror = function () { excelLoading = null; reject(new Error('ExcelJS non caricato')); };
+        document.head.appendChild(sc);
+      });
+    }
+    return excelLoading;
+  }
+
+  function exportExcel() {
+    if (!activeEmployees().length) return toast('Aggiungi prima i dipendenti');
+    toast('Preparazione del file Excel…', true);
+    loadExcelJS().then(function (ExcelJS) {
+      var wb = window.ExportXlsx.buildWorkbook(ExcelJS, R, state, view.y, view.m,
+        { logoBase64: window.LOGO_PNG_BASE64 });
+      return wb.xlsx.writeBuffer();
+    }).then(function (buf) {
+      download(window.ExportXlsx.fileName(view.y, view.m), buf,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      var days = window.ExportXlsx.tabelloneDays(R, view.y, view.m);
+      toast('Tabellone esportato: dal ' + fmtDate(days[0]) + ' al ' + fmtDate(days[days.length - 1]) + '.');
+    }).catch(function () {
+      toast('Non sono riuscito a creare il file Excel. Riprova.', true);
     });
-    ['G', 'N'].forEach(function (code) {
-      rows.push(['Copertura ' + code, '', ''].concat(days.map(function (k) {
-        return String(R.staffOn(state, k, code).length);
-      })));
-    });
-    var csv = rows.map(function (r) {
-      return r.map(function (v) { return /[;"\n]/.test(v) ? '"' + String(v).replace(/"/g, '""') + '"' : v; }).join(';');
-    }).join('\r\n');
-    download('turni-' + view.y + '-' + (view.m < 10 ? '0' : '') + view.m + '.csv', '﻿' + csv, 'text/csv;charset=utf-8');
   }
 
   function backup() {
@@ -717,15 +726,18 @@
   // ---------- Dipendenti ----------
 
   function renderEmployees() {
-    var h = '<thead><tr><th></th><th>Nome</th><th>Qualifica</th><th>Contratto</th><th>Monte ore ' + MONTHS[view.m - 1].toLowerCase() +
+    var short = window.ExportXlsx.defaultShortNames(state.employees);
+    var h = '<thead><tr><th></th><th>Nome</th><th title="Come compare nel tabellone esportato in Excel">Nome nel tabellone</th><th>Qualifica</th><th>Contratto</th><th>Monte ore ' + MONTHS[view.m - 1].toLowerCase() +
       '</th><th>Legge 104</th><th>Attivo</th><th></th></tr></thead><tbody>';
-    if (!state.employees.length) h += '<tr><td colspan="8" class="empty">Nessun dipendente inserito.</td></tr>';
+    if (!state.employees.length) h += '<tr><td colspan="9" class="empty">Nessun dipendente inserito.</td></tr>';
     state.employees.forEach(function (e, i) {
       var std = e.weeklyHours === 38 || e.weeklyHours === 24;
       h += '<tr data-id="' + esc(e.id) + '">' +
         '<td class="order"><button data-act="up" title="Sposta su"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" title="Sposta giù"' + (i === state.employees.length - 1 ? ' disabled' : '') + '>▼</button></td>' +
         '<td><input data-field="name" value="' + esc(e.name) + '"></td>' +
+        '<td><input data-field="shortName" class="short" value="' + esc(e.shortName || '') + '" placeholder="' +
+        esc(short[e.id] || '') + '" title="Vuoto = ' + esc(short[e.id] || '') + '"></td>' +
         '<td><select data-field="role">' +
         '<option value="autista"' + (R.isDriver(e) ? ' selected' : '') + '>Autista soccorritore</option>' +
         '<option value="soccorritore"' + (!R.isDriver(e) ? ' selected' : '') + '>Soccorritore</option></select></td>' +
@@ -772,6 +784,7 @@
       var e = empById(tr.getAttribute('data-id'));
       var f = ev.target.getAttribute('data-field');
       if (f === 'name') e.name = ev.target.value.trim() || e.name;
+      if (f === 'shortName') e.shortName = ev.target.value.trim().toUpperCase();
       if (f === 'active') e.active = ev.target.checked;
       if (f === 'has104') e.has104 = ev.target.checked;
       if (f === 'role') e.role = ev.target.value;
@@ -821,6 +834,7 @@
     f.staffN.value = state.settings.staffPerShift.N;
     f.perm104Hours.value = state.settings.perm104Hours;
     f.perm104PerMonth.value = state.settings.perm104PerMonth;
+    f.tabelloneTitle.value = state.settings.tabelloneTitle || window.ExportXlsx.DEFAULT_TITLE;
     f.minDriversPerShift.value = state.settings.minDriversPerShift;
     f.maxSameInRow.value = state.settings.maxSameInRow;
     f.maxWeekendsPerMonth.value = state.settings.maxWeekendsPerMonth;
@@ -835,6 +849,7 @@
       state.settings.staffPerShift = { G: Math.max(0, +f.staffG.value || 0), N: Math.max(0, +f.staffN.value || 0) };
       state.settings.perm104Hours = +f.perm104Hours.value >= 0 && f.perm104Hours.value !== ''
         ? +f.perm104Hours.value : R.DEFAULT_SETTINGS.perm104Hours;
+      state.settings.tabelloneTitle = f.tabelloneTitle.value.trim() || window.ExportXlsx.DEFAULT_TITLE;
       state.settings.perm104PerMonth = +f.perm104PerMonth.value >= 0 && f.perm104PerMonth.value !== ''
         ? +f.perm104PerMonth.value : R.DEFAULT_SETTINGS.perm104PerMonth;
       state.settings.minDriversPerShift = f.minDriversPerShift.value !== '' && +f.minDriversPerShift.value >= 0
@@ -900,7 +915,7 @@
     $('#btn-clear-month').addEventListener('click', clearMonth);
     $('#period-form').addEventListener('submit', insertPeriod);
     $('#btn-print').addEventListener('click', function () { window.print(); });
-    $('#btn-csv').addEventListener('click', exportCsv);
+    $('#btn-excel').addEventListener('click', exportExcel);
     document.addEventListener('keydown', function (ev) {
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' &&
         !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) {

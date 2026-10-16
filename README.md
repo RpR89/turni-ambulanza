@@ -67,7 +67,16 @@ e non c'è un server con i dati.
   - **Rifai proposta** ricalcola **solo i turni automatici** non bloccati: i turni scritti a mano,
     ferie, malattia, permessi, richieste di riposo e formazione restano.
   - **Reset completo** cancella tutto il mese, anche i turni scritti a mano; restano solo le caselle bloccate 🔒.
-- **Stampa** (A4 orizzontale) ed **esportazione CSV** per Excel.
+- **Stampa** (A4 orizzontale).
+- **Esporta Excel**: scarica il *Tabellone turni* in formato `.xlsx`, con lo stesso aspetto
+  di quello del comitato: logo e titolo, colonne *GIORNO | UR*, *Note*, *NOTTE | UR*, *EXTRA*,
+  *FORMAZIONE*, *MANIFESTAZIONI*, *ASSENZE*, weekend in verde, pronto da stampare su A4 orizzontale.
+  - Comprende le settimane che iniziano con un lunedì del mese (ottobre 2026: dal 5/10 al 1/11).
+  - In ogni turno l'autista è scritto per primo; in *FORMAZIONE* chi ha un corso; in *ASSENZE*
+    ferie, malattia e permessi 104 (chi è assente più giorni resta nella stessa colonna).
+  - I nomi sono quelli del campo *Nome nel tabellone* (scheda Dipendenti): se è vuoto si usa il cognome,
+    con le iniziali del nome quando due dipendenti hanno lo stesso cognome (`BETTEGA GI.`, `BETTEGA CH.`).
+  - Il titolo si cambia in *Impostazioni*. *Note*, *EXTRA* e *MANIFESTAZIONI* restano da compilare a mano.
 - **Backup**: i dati stanno nel browser. Con *Scarica backup* / *Carica backup* li salvi
   o li sposti su un altro computer.
 
@@ -111,4 +120,5 @@ npm start    # server locale su http://localhost:8080
 
 - `js/rules.js`: calcolo ore, vincoli e proposta automatica (senza DOM, testato)
 - `js/app.js`: interfaccia
+- `js/export-xlsx.js`: tabellone in Excel; `js/vendor/exceljs.min.js` è [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (licenza MIT)
 - `tests/rules.test.js`: test delle regole

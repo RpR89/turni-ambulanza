@@ -1,7 +1,8 @@
 /*
  * Esportazione del tabellone turni in Excel (.xlsx), con lo stesso aspetto del
- * "TABELLONE TURNI" usato dal comitato: logo e titolo, colonne GIORNO | UR, Note,
- * NOTTE | UR, EXTRA, FORMAZIONE, MANIFESTAZIONI, ASSENZE, weekend in verde.
+ * "TABELLONE TURNI" usato dal comitato: logo e titolo, un gruppo di colonne per ogni turno
+ * di ogni ambulanza ("GIORNO | 12345", "NOTTE | 12345", …) con Note dopo il primo,
+ * poi EXTRA, FORMAZIONE, MANIFESTAZIONI, ASSENZE, weekend in verde.
  * Usa ExcelJS (js/vendor/exceljs.min.js nel browser, il pacchetto npm nei test).
  */
 (function (root) {
@@ -17,23 +18,28 @@
   var GREEN = 'FFB3DA88';
   var GREY = 'FFEFEFEF';
 
-  // Colonne (1 = A): gruppi con il numero di colonne di ciascuno.
-  var GROUPS = [
-    { key: 'day', cols: 2 },          // A-B  giorno della settimana e data
-    { key: 'G', cols: 3 },            // C-E  GIORNO | UR
-    { key: 'note', cols: 1 },         // F    Note
-    { key: 'N', cols: 3 },            // G-I  NOTTE | UR
-    { key: 'extra', cols: 2 },        // J-K  EXTRA
-    { key: 'training', cols: 5 },     // L-P  FORMAZIONE
-    { key: 'events', cols: 2 },       // Q-R  MANIFESTAZIONI
-    { key: 'absences', cols: 5 }      // S-W  ASSENZE
-  ];
-  var START = {};
-  (function () {
-    var c = 1;
-    GROUPS.forEach(function (g) { START[g.key] = c; c += g.cols; });
-  })();
-  var LAST_COL = 23;
+  /*
+   * Colonne (1 = A): gruppi con il numero di colonne di ciascuno. Con l'ambulanza
+   * predefinita (G 07–19, N 19–07) è identico al modello: A-B giorno, C-E GIORNO, F Note,
+   * G-I NOTTE, J-K EXTRA, L-P FORMAZIONE, Q-R MANIFESTAZIONI, S-W ASSENZE.
+   */
+  function layoutFor(Rules, state) {
+    var shifts = Rules.shiftCatalog(state).list;
+    var groups = [{ key: 'day', cols: 2 }];
+    shifts.forEach(function (sh, i) {
+      groups.push({ key: 's:' + sh.id, shift: sh, cols: 3 });
+      if (i === 0) groups.push({ key: 'note', cols: 1 });
+    });
+    if (!shifts.length) groups.push({ key: 'note', cols: 1 });
+    groups.push({ key: 'extra', cols: 2 }, { key: 'training', cols: 5 },
+      { key: 'events', cols: 2 }, { key: 'absences', cols: 5 });
+    var start = {}, c = 1;
+    groups.forEach(function (g) { start[g.key] = c; g.start = c; c += g.cols; });
+    // Bordo spesso a sinistra di ogni gruppo (tranne Note, sottile come nell'originale).
+    var mediumLeft = {};
+    groups.forEach(function (g) { if (g.key !== 'note' && g.key !== 'day') mediumLeft[g.start] = true; });
+    return { groups: groups, start: start, lastCol: c - 1, mediumLeft: mediumLeft, shifts: shifts };
+  }
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
@@ -98,17 +104,20 @@
       var withCode = function (codes) {
         return emps.filter(function (e) { return codes.indexOf(Rules.codeOn(state, e.id, k)) >= 0; }).map(name);
       };
-      var day = byDriverThenOrder(Rules.staffOn(state, k, 'G')).map(name);
-      var night = byDriverThenOrder(Rules.staffOn(state, k, 'N')).map(name);
+      var shifts = {}, extra = [];
+      Rules.shiftCatalog(state).list.forEach(function (sh) {
+        var names = byDriverThenOrder(Rules.staffOn(state, k, sh.id)).map(name);
+        shifts[sh.id] = names.slice(0, 3);
+        // oltre la terza persona del turno si scrive in EXTRA
+        extra = extra.concat(names.slice(3));
+      });
       return {
         key: k,
         weekday: WEEKDAYS[Rules.weekday(k)],
         date: p[2] + '-' + MONTHS_SHORT[+p[1] - 1],
         weekend: Rules.weekday(k) >= 5,
-        G: day.slice(0, 3),
-        N: night.slice(0, 3),
-        // oltre la terza persona del turno si scrive in EXTRA
-        extra: day.slice(3).concat(night.slice(3)).slice(0, 2),
+        shifts: shifts,
+        extra: extra.slice(0, 2),
         training: slots('training', withCode(['C']), 5),
         events: [],
         absences: slots('absences', withCode(['F', 'M', 'P']), 5)
@@ -119,16 +128,13 @@
   function thin() { return { style: 'thin', color: { argb: 'FF000000' } }; }
   function medium() { return { style: 'medium', color: { argb: 'FF000000' } }; }
 
-  // Bordo spesso a sinistra di ogni gruppo di colonne (tranne tra GIORNO e Note, come nell'originale).
-  var MEDIUM_LEFT = {};
-  [START.G, START.N, START.extra, START.training, START.events, START.absences].forEach(function (c) {
-    MEDIUM_LEFT[c] = true;
-  });
 
   function buildWorkbook(ExcelJS, Rules, state, y, m, opts) {
     opts = opts || {};
     var title = (state.settings && state.settings.tabelloneTitle) || DEFAULT_TITLE;
     var rows = tabelloneRows(Rules, state, y, m);
+    var L = layoutFor(Rules, state);
+    var START = L.start, LAST_COL = L.lastCol, MEDIUM_LEFT = L.mediumLeft;
 
     var wb = new ExcelJS.Workbook();
     wb.creator = 'Turni Ambulanza';
@@ -172,19 +178,14 @@
     // ---------- Righe 2-3: intestazioni ----------
     ws.getRow(2).height = 19;
     ws.getRow(3).height = 19;
-    var headers = [
-      { key: 'day', label: MONTHS[m - 1], size: 12 },
-      { key: 'G', label: 'GIORNO | UR', sub: '07:00 - 19:00' },
-      { key: 'note', label: 'Note' },
-      { key: 'N', label: 'NOTTE | UR', sub: '19:00 - 07:00' },
-      { key: 'extra', label: 'EXTRA' },
-      { key: 'training', label: 'FORMAZIONE' },
-      { key: 'events', label: 'MANIFESTAZIONI' },
-      { key: 'absences', label: 'ASSENZE' }
-    ];
-    headers.forEach(function (h) {
-      var g = GROUPS.filter(function (x) { return x.key === h.key; })[0];
-      var c0 = START[h.key], c1 = c0 + g.cols - 1;
+    var FIXED = { day: MONTHS[m - 1], note: 'Note', extra: 'EXTRA', training: 'FORMAZIONE',
+      events: 'MANIFESTAZIONI', absences: 'ASSENZE' };
+    L.groups.forEach(function (g) {
+      var h = g.shift
+        ? { label: String(g.shift.name).toUpperCase() + ' | ' + (g.shift.ambCode || 'UR'),
+          sub: g.shift.startText + ' - ' + g.shift.endText }
+        : { label: FIXED[g.key], size: g.key === 'day' ? 12 : 10 };
+      var c0 = g.start, c1 = c0 + g.cols - 1;
       if (h.sub) {
         ws.mergeCells(2, c0, 2, c1);
         ws.mergeCells(3, c0, 3, c1);
@@ -216,7 +217,10 @@
       var values = {};
       values[1] = d.weekday;
       values[2] = d.date;
-      ['G', 'N', 'extra', 'training', 'events', 'absences'].forEach(function (k) {
+      L.shifts.forEach(function (sh) {
+        (d.shifts[sh.id] || []).forEach(function (v, j) { if (v) values[START['s:' + sh.id] + j] = v; });
+      });
+      ['extra', 'training', 'events', 'absences'].forEach(function (k) {
         d[k].forEach(function (v, j) { if (v) values[START[k] + j] = v; });
       });
       var sat = d.weekend && d.weekday === 'SAB';
@@ -250,6 +254,7 @@
     defaultShortNames: defaultShortNames,
     tabelloneDays: tabelloneDays,
     tabelloneRows: tabelloneRows,
+    layoutFor: layoutFor,
     buildWorkbook: buildWorkbook,
     fileName: fileName
   };

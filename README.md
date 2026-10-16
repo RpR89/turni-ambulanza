@@ -6,10 +6,15 @@ e non c'è un server con i dati.
 
 ## Cosa fa
 
+- **Ambulanze e turni** (scheda *Impostazioni*): ogni ambulanza ha un **codice di 5 cifre** e i suoi turni,
+  ciascuno con nome (es. `GIORNO`), sigla (es. `G`), **ora di inizio e di fine** e **giorni della settimana**
+  in cui è in servizio. *Turnazione 24 ore* imposta subito `G` 07–19 e `N` 19–07 tutti i giorni;
+  con *+ Turno* si aggiungono fasce con orari diversi. Un turno che passa la mezzanotte conta come notte.
+  Senza modifiche c'è una sola ambulanza con `G` 07–19 e `N` 19–07 (come nelle versioni precedenti).
 - **Tabellone mensile**: una riga per dipendente e una colonna per giorno.
   Ogni casella può contenere:
-  - `G`: turno giorno, 7–19 (12 h)
-  - `N`: turno notte, 19–7 (12 h)
+  - uno o più **turni**, indicati con la loro sigla (es. `G`, `N`, `G2`);
+    con <kbd>Maiusc</kbd>+clic si aggiunge un turno a quelli già presenti nel giorno
   - `F`: ferie
   - `M`: malattia
   - `P` (mostrato come `104`): permesso Legge 104 da 7,6 h, solo per i dipendenti con la 104 attiva
@@ -19,21 +24,23 @@ e non c'è un server con i dati.
 - **Periodi**: con *Inserisci un periodo*, sopra il tabellone, metti in un colpo solo
   una richiesta di riposo, ferie o malattia dal giorno X al giorno Y per un dipendente.
 - **Inserimento veloce**: scegli cosa inserire e clicca (o trascina) sulle caselle.
-  Da tastiera ti muovi con le frecce e scrivi con <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd>
+  Da tastiera ti muovi con le frecce e scrivi con la sigla di un turno di una lettera (es. <kbd>G</kbd> <kbd>N</kbd>)
+  o con <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd>
   (<kbd>Canc</kbd> cancella, <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla).
 - **Vincoli controllati in tempo reale**, con le caselle in errore evidenziate in rosso:
-  - massimo **48 ore** per settimana (da lunedì a domenica);
+  - massimo **48 ore** per settimana (da lunedì a domenica) e **12 ore al giorno**
+    (si possono fare più turni nello stesso giorno solo se rispettano tutte le regole);
   - almeno **11 ore** di riposo tra la fine di un turno e l'inizio del successivo.
     Il controllo vale anche a cavallo tra due mesi.
-    In pratica non sono ammessi una `N` seguita da una `G` il giorno dopo, né `G` e `N` nello stesso giorno.
-  - **almeno un autista soccorritore** in ogni turno: ogni dipendente è *Autista soccorritore*
+    Con i turni predefiniti non sono ammessi una `N` seguita da una `G` il giorno dopo, né `G` e `N` nello stesso giorno.
+  - **almeno un autista soccorritore** in ogni turno di ogni ambulanza: ogni dipendente è *Autista soccorritore*
     (con patente) oppure *Soccorritore* (senza patente). Gli autisti sono segnati con una **A** accanto al nome.
   - **niente notte il giorno prima di un corso**: con la formazione (`C`) il giorno X,
-    la notte del giorno prima (che finisce alle 7 del giorno X) non è ammessa;
+    un turno di notte del giorno prima (che finisce il giorno X) non è ammesso;
   - **permessi 104**: al massimo 3 nel mese di calendario e solo per chi ha diritto alla 104.
     Accanto al nome compare il contatore dei permessi usati (es. `104 · 2/3`).
 - **Regole da evitare** (superabili solo se non c'è alternativa, caselle in arancione):
-  - non più di **2 G o 2 N di fila**: meglio blocchi alternati tipo `G G N` o `G N N`;
+  - non più di **2 giorni o 2 notti di fila**: meglio blocchi alternati tipo `G G N` o `G N N`;
   - non più di **2 weekend al mese**: un weekend conta anche se si lavora solo il sabato o solo la domenica,
     e contano anche i turni inseriti a mano;
   - turni **distribuiti in modo uniforme tra le settimane** (es. 2-3 ogni settimana, non 4 e poi 1);
@@ -47,9 +54,11 @@ e non c'è un server con i dati.
 
   Accanto al monte ore trovi le ore fatte e il saldo (+/−).
   Si può impostare anche un orario settimanale diverso, a scelta.
-- **Copertura**: conta quante persone ci sono in ogni turno rispetto a quelle richieste
-  (2 di giorno e 2 di notte, modificabili in *Impostazioni*) e quanti autisti ci sono in ciascun turno.
-- **Proposta automatica**: riempie i turni scoperti senza toccare quelli già inseriti.
+- **Copertura**: sotto il tabellone, una riga per ogni turno di ogni ambulanza con quante persone ci sono
+  (2 richieste per turno, modificabile in *Impostazioni*); in rosso se mancano persone o l'autista,
+  `–` nei giorni in cui il turno non è previsto.
+- **Proposta automatica**: riempie i turni scoperti di tutte le ambulanze, nei giorni previsti,
+  senza toccare quelli già inseriti.
   Rispetta sempre i vincoli e dà la precedenza a chi è più indietro con il monte ore.
   In ogni turno mette prima un autista soccorritore e poi, se possibile, un soccorritore,
   così gli autisti restano disponibili per gli altri turni.
@@ -71,8 +80,10 @@ e non c'è un server con i dati.
   - **Reset completo** cancella tutto il mese, anche i turni scritti a mano; restano solo le caselle bloccate 🔒.
 - **Stampa** (A4 orizzontale).
 - **Esporta Excel**: scarica il *Tabellone turni* in formato `.xlsx`, con lo stesso aspetto
-  di quello del comitato: logo e titolo, colonne *GIORNO | UR*, *Note*, *NOTTE | UR*, *EXTRA*,
+  di quello del comitato: logo e titolo, un gruppo di colonne per ogni turno di ogni ambulanza
+  (*GIORNO | 12345*, *NOTTE | 12345*, …; *UR* se il codice non è impostato), *Note*, *EXTRA*,
   *FORMAZIONE*, *MANIFESTAZIONI*, *ASSENZE*, weekend in verde, pronto da stampare su A4 orizzontale.
+  Con una sola ambulanza 24 ore il foglio è identico al modello.
   - Comprende le settimane che iniziano con un lunedì del mese (ottobre 2026: dal 5/10 al 1/11).
   - In ogni turno l'autista è scritto per primo; in *FORMAZIONE* chi ha un corso; in *ASSENZE*
     ferie, malattia e permessi 104 (chi è assente più giorni resta nella stessa colonna).
@@ -91,7 +102,7 @@ e non c'è un server con i dati.
 - Il permesso 104 vale 7,6 h in qualsiasi giorno, anche per i part-time.
   Ore e numero massimo si cambiano in *Impostazioni*.
 - La formazione conta come lavoro: entra nelle ore del mese e nel massimo di 48 h settimanali.
-- Weekend lavorato = almeno un turno `G` o `N` che inizia di sabato o di domenica.
+- Weekend lavorato = almeno un turno che inizia di sabato o di domenica.
   La notte tra venerdì e sabato conta come venerdì, quindi non consuma un weekend;
   la notte tra domenica e lunedì conta come domenica.
   Ferie, malattia, permessi 104, formazione e richieste di non lavorare nel weekend non contano.

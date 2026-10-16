@@ -7,14 +7,15 @@
   var MONTHS = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio',
     'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
   var WEEKDAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
-  var CODES = ['G', 'N', 'F', 'M', 'P', 'R', 'C'];
+  var CODES = R.RESERVED_CODES; // F, M, P, R, C (i turni si scrivono con la loro sigla)
 
   // ---------- Stato ----------
 
   function emptyState() {
     return {
       version: 1,
-      settings: JSON.parse(JSON.stringify(R.DEFAULT_SETTINGS)),
+      settings: Object.assign(JSON.parse(JSON.stringify(R.DEFAULT_SETTINGS)),
+        { ambulances: R.defaultAmbulances() }),
       employees: [],
       assignments: {},
       locks: {},
@@ -34,8 +35,12 @@
     var base = emptyState();
     if (!s || typeof s !== 'object' || !Array.isArray(s.employees)) throw new Error('Formato non valido');
     base.settings = Object.assign(base.settings, s.settings || {});
-    base.settings.staffPerShift = Object.assign({}, R.DEFAULT_SETTINGS.staffPerShift,
-      (s.settings && s.settings.staffPerShift) || {});
+    // Versioni precedenti: persone per turno separate per G e N.
+    if (s.settings && s.settings.crewSize == null && s.settings.staffPerShift) {
+      base.settings.crewSize = +s.settings.staffPerShift.G || R.DEFAULT_SETTINGS.crewSize;
+    }
+    delete base.settings.staffPerShift;
+    base.settings.ambulances = normalizeAmbulances(base.settings.ambulances);
     base.employees = s.employees.map(function (e) {
       return {
         id: String(e.id), name: String(e.name || ''), weeklyHours: +e.weeklyHours || 38,
@@ -48,6 +53,23 @@
     base.locks = s.locks && typeof s.locks === 'object' ? s.locks : {};
     base.auto = s.auto && typeof s.auto === 'object' ? s.auto : {};
     return base;
+  }
+
+  function normalizeAmbulances(list) {
+    if (!Array.isArray(list) || !list.length) return R.defaultAmbulances();
+    return list.map(function (a, i) {
+      return {
+        id: String(a.id || 'A' + (i + 1)),
+        code: /^\d{5}$/.test(String(a.code || '')) ? String(a.code) : '',
+        shifts: (Array.isArray(a.shifts) ? a.shifts : []).map(function (sh) {
+          return {
+            id: String(sh.id), name: String(sh.name || sh.label || 'TURNO'), label: String(sh.label || sh.id),
+            start: String(sh.start || '07:00'), end: String(sh.end || '19:00'),
+            days: Array.isArray(sh.days) && sh.days.length === 7 ? sh.days.map(Boolean) : [true, true, true, true, true, true, true]
+          };
+        })
+      };
+    });
   }
 
   var state = loadState();
@@ -64,6 +86,13 @@
   }
 
   var undoStack = [];
+  // Prima di eliminare turni o ambulanze: si salva anche l'elenco delle ambulanze.
+  function snapshotAll() {
+    undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto,
+      ambulances: state.settings.ambulances }));
+    if (undoStack.length > 50) undoStack.shift();
+  }
+
   function snapshot() {
     undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto }));
     if (undoStack.length > 50) undoStack.shift();
@@ -74,13 +103,14 @@
     state.assignments = snap.assignments;
     state.locks = snap.locks || {};
     state.auto = snap.auto || {};
+    if (snap.ambulances) { state.settings.ambulances = snap.ambulances; renderAll(); }
     save();
     renderMonth();
   }
 
   var now = new Date();
   var view = { y: now.getFullYear(), m: now.getMonth() + 1 };
-  var tool = 'G';
+  var tool = (R.shiftCatalog(state).list[0] || { id: 'F' }).id;
 
   // ---------- Utilità ----------
 
@@ -145,7 +175,9 @@
     return h > 0 ? h : 8;
   }
 
-  // Valore da salvare per un codice: la formazione porta con sé le ore.
+  function isShiftCode(code) { return !!(code && R.shiftInfo(state, code)); }
+
+  // Valore da salvare per un codice: la formazione porta con sé le ore, un turno è il suo id.
   function makeEntry(code) {
     return code === 'C' ? { code: 'C', hours: trainingHours() } : code;
   }
@@ -168,7 +200,24 @@
     var code = R.codeOf(entry);
     if (code === 'C') return 'C<small>' + fmt(entry.hours) + 'h</small>';
     if (code === 'P') return '104';
-    return code;
+    if (code) return code;
+    var ids = R.shiftIdsOf(state, entry);
+    var labels = ids.map(function (id) { return esc(R.shiftInfo(state, id).label); });
+    return ids.length > 1 ? '<span class="multi">' + labels.join('<br>') + '</span>' : labels.join('');
+  }
+
+  // Colore della casella: voce (F, M, …) oppure turno di giorno (G) / di notte (N).
+  function cellClass(entry) {
+    var code = R.codeOf(entry);
+    if (code) return ' cell-' + code;
+    var ids = R.shiftIdsOf(state, entry);
+    if (!ids.length) return '';
+    var night = ids.some(function (id) { return R.shiftInfo(state, id).night; });
+    return (night ? ' cell-N' : ' cell-G') + (ids.length > 1 ? ' cell-multi' : '');
+  }
+
+  function shiftTitle(sh) {
+    return sh.name + (sh.ambCode ? ' · ambulanza ' + sh.ambCode : '') + ' · ' + sh.startText + '–' + sh.endText;
   }
 
   function perm104Count(empId) {
@@ -245,12 +294,11 @@
         '<small>' + esc(info) + '</small></th>';
       days.forEach(function (key, col) {
         var entry = getEntry(e.id, key);
-        var code = R.codeOf(entry);
         var errs = cellErr[e.id + '|' + key];
         var softs = cellSoft[e.id + '|' + key];
         var tips = (errs || []).concat(softs || []);
         var wd = R.weekday(key);
-        var cls = 'cell' + (code ? ' cell-' + code : '') + (wd >= 5 ? ' weekend' : '') +
+        var cls = 'cell' + cellClass(entry) + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
           (R.isLocked(state, e.id, key) ? ' locked' : '') + (R.isAuto(state, e.id, key) ? ' auto' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
@@ -271,27 +319,24 @@
     });
     h += '</tbody><tfoot>';
 
-    ['G', 'N'].forEach(function (code) {
-      var need = +state.settings.staffPerShift[code] || 0;
-      h += '<tr><th class="name">Copertura ' + code + ' <small>(' + need + ' richiesti)</small></th>';
+    // Copertura: una riga per ogni turno di ogni ambulanza (persone presenti; rosso se mancano
+    // persone o l'autista, "–" nei giorni in cui il turno non è previsto).
+    var crew = +state.settings.crewSize || 0, minDrivers = +state.settings.minDriversPerShift;
+    R.shiftCatalog(state).list.forEach(function (sh, i) {
+      h += '<tr class="' + (i === 0 ? 'first-cov' : '') + '"><th class="name" title="' + esc(shiftTitle(sh)) + '">Copertura ' +
+        esc(sh.label) + ' <small>' + esc((sh.ambCode ? sh.ambCode + ' · ' : '') + sh.startText + '–' + sh.endText) +
+        '</small></th>';
       days.forEach(function (key) {
-        var have = R.staffOn(state, key, code).length;
-        var cls = have < need ? 'under' : have > need ? 'over' : 'ok';
-        h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' +
-          esc(R.staffOn(state, key, code)
-            .map(function (e) { return e.name; }).join(', ') || 'Nessuno') + '">' + have + '</td>';
-      });
-      h += '<td colspan="7"></td></tr>';
-    });
-    var minDrivers = +state.settings.minDriversPerShift;
-    ['G', 'N'].forEach(function (code) {
-      h += '<tr class="drivers"><th class="name">Autisti ' + code + ' <small>(almeno ' + minDrivers + ')</small></th>';
-      days.forEach(function (key) {
-        var staff = R.staffOn(state, key, code);
-        var drv = staff.filter(R.isDriver);
-        var cls = staff.length && drv.length < minDrivers ? 'under' : drv.length ? 'ok' : '';
-        h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' +
-          esc(drv.map(function (e) { return e.name; }).join(', ') || 'Nessun autista') + '">' + drv.length + '</td>';
+        var active = sh.days[R.weekday(key)];
+        var staff = R.staffOn(state, key, sh.id);
+        var drv = staff.filter(R.isDriver).length;
+        var need = active ? crew : 0;
+        var cls = staff.length < need || (staff.length && drv < minDrivers) ? 'under' : staff.length > need ? 'over' : active ? 'ok' : 'off';
+        var tip = staff.map(function (e) { return e.name + (R.isDriver(e) ? ' (autista)' : ''); }).join(', ') || 'Nessuno';
+        if (staff.length && drv < minDrivers) tip += ' — manca l\'autista';
+        if (!active) tip = 'Turno non previsto questo giorno' + (staff.length ? ': ' + tip : '');
+        h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' + esc(tip) + '">' +
+          (active || staff.length ? staff.length + (staff.length && drv < minDrivers ? '!' : '') : '–') + '</td>';
       });
       h += '<td colspan="7"></td></tr>';
     });
@@ -382,6 +427,7 @@
   // ---------- Inserimento nel tabellone ----------
 
   var painting = null; // valore che si sta "dipingendo" trascinando il mouse
+  var paintMode = null; // 'add'/'remove' con Maiusc: aggiunge o toglie un turno nel giorno
 
   function setLock(empId, key, on) {
     if (!state.locks[empId]) state.locks[empId] = {};
@@ -393,7 +439,8 @@
 
   // Scrive il codice nella casella; false se non cambia nulla o non è ammesso.
   // Con lo strumento "blocca" (L) invece blocca o sblocca la casella.
-  function applyToCell(td, code) {
+  // `mode` 'add'/'remove' (Maiusc+clic): aggiunge o toglie un turno lasciando gli altri del giorno.
+  function applyToCell(td, code, mode) {
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
     if (code === 'L+' || code === 'L-') {
       if (R.isLocked(state, emp, key) === (code === 'L+')) return false;
@@ -404,6 +451,14 @@
       if (!lockWarned) toast('Casella bloccata 🔒: sbloccala con lo strumento "blocca" prima di modificarla.', true);
       lockWarned = true;
       return false;
+    }
+    if (mode && isShiftCode(code)) {
+      var ids = R.shiftIdsOn(state, emp, key);
+      var has = ids.indexOf(code) >= 0;
+      if (mode === 'add' ? has : !has) return false;
+      ids = mode === 'add' ? ids.concat([code]) : ids.filter(function (x) { return x !== code; });
+      setCell(emp, key, R.shiftEntry(ids));
+      return true;
     }
     var entry = makeEntry(code);
     if (sameEntry(getEntry(emp, key), entry)) return false;
@@ -417,9 +472,8 @@
 
   function paintCell(td) {
     var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
-    var code = R.codeOf(entry);
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
-    td.className = td.className.replace(/ ?cell-[A-Z]| ?locked| ?auto/g, '') + (code ? ' cell-' + code : '') +
+    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?locked| ?auto/g, '') + cellClass(entry) +
       (R.isLocked(state, emp, key) ? ' locked' : '') + (R.isAuto(state, emp, key) ? ' auto' : '');
     td.innerHTML = cellHtml(entry);
   }
@@ -453,21 +507,27 @@
       td.focus();
       snapshot();
       lockWarned = false;
+      paintMode = null;
       if (tool === 'L') {
         // Il primo clic decide se il trascinamento blocca o sblocca.
         painting = R.isLocked(state, td.getAttribute('data-emp'), td.getAttribute('data-date')) ? 'L-' : 'L+';
+      } else if (ev.shiftKey && isShiftCode(tool)) {
+        // Maiusc+clic: aggiunge il turno a quelli del giorno (o lo toglie se c'è già).
+        painting = tool;
+        paintMode = R.shiftIdsOn(state, td.getAttribute('data-emp'), td.getAttribute('data-date')).indexOf(tool) >= 0
+          ? 'remove' : 'add';
       } else {
         var cur = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
         // Cliccare una casella che contiene già il valore scelto la svuota.
         painting = sameEntry(cur, makeEntry(tool)) ? '' : tool;
       }
-      if (applyToCell(td, painting)) paintCell(td);
+      if (applyToCell(td, painting, paintMode)) paintCell(td);
     });
 
     grid.addEventListener('mouseover', function (ev) {
       if (painting === null) return;
       var td = ev.target.closest('td.cell');
-      if (td && applyToCell(td, painting)) paintCell(td);
+      if (td && applyToCell(td, painting, paintMode)) paintCell(td);
     });
 
     document.addEventListener('mouseup', function () {
@@ -500,7 +560,8 @@
         commit(td.getAttribute('data-emp'), td.getAttribute('data-date'));
         return;
       }
-      var code = CODES.indexOf(k) >= 0 ? k : (ev.key === 'Delete' || ev.key === 'Backspace' || ev.key === ' ') ? '' : null;
+      var code = CODES.indexOf(k) >= 0 ? k : shiftByLetter(k) ||
+        ((ev.key === 'Delete' || ev.key === 'Backspace' || ev.key === ' ') ? '' : null);
       if (code === null) return;
       ev.preventDefault();
       snapshot();
@@ -527,9 +588,29 @@
     });
   }
 
+  // Tasto da tastiera → turno con quella sigla (es. G, N); null se nessuno.
+  function shiftByLetter(k) {
+    var found = R.shiftCatalog(state).list.filter(function (sh) { return sh.label.toUpperCase() === k; })[0];
+    return found ? found.id : null;
+  }
+
   function selectTool(code) {
     tool = code;
     $all('.tool').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tool') === code); });
+  }
+
+  // Pulsanti dei turni: uno per ogni turno di ogni ambulanza.
+  function renderShiftTools() {
+    var list = R.shiftCatalog(state).list;
+    $('#shift-tools').innerHTML = list.map(function (sh) {
+      return '<button class="tool ' + (sh.night ? 'cell-N' : 'cell-G') + '" data-tool="' + esc(sh.id) + '" title="' +
+        esc(shiftTitle(sh) + ' — Maiusc+clic per aggiungerlo agli altri turni del giorno') + '">' + esc(sh.label) +
+        ' <small>' + esc(sh.startText.replace(/:00$/, '') + '–' + sh.endText.replace(/:00$/, '')) +
+        (sh.ambCode && list.some(function (o) { return o.ambId !== sh.ambId; }) ? ' · ' + esc(sh.ambCode) : '') +
+        '</small></button>';
+    }).join('');
+    if (!(isShiftCode(tool) || CODES.indexOf(tool) >= 0 || tool === '' || tool === 'L')) tool = list.length ? list[0].id : 'F';
+    selectTool(tool);
   }
 
   // ---------- Azioni ----------
@@ -635,7 +716,7 @@
     if (!days.length) return toast('Tutti i giorni del periodo sono bloccati 🔒.');
     var busy = days.filter(function (k) {
       var c = R.codeOn(state, empId, k);
-      return c && c !== code;
+      return c && c !== code || R.hasShiftOn(state, empId, k);
     });
     if (busy.length && !confirm('Nel periodo ' + e.name + ' ha già ' + busy.length +
       ' giorni con turni o altre voci (' + busy.map(fmtDate).slice(0, 6).join(', ') +
@@ -656,7 +737,7 @@
     var days = R.monthDays(view.y, view.m);
     var found = 0;
     activeEmployees().forEach(function (e) {
-      days.forEach(function (k) { if (R.isAuto(state, e.id, k) && !R.isLocked(state, e.id, k)) found++; });
+      days.forEach(function (k) { if (!R.isLocked(state, e.id, k)) found += R.autoIdsOn(state, e.id, k).length; });
     });
     if (!found) return toast('In ' + MONTHS[view.m - 1].toLowerCase() + ' non ci sono turni automatici da cancellare.');
     if (!confirm('Cancellare i ' + found + ' turni inseriti dalla proposta automatica in ' + MONTHS[view.m - 1] + '?\n' +
@@ -665,7 +746,11 @@
     snapshot();
     activeEmployees().forEach(function (e) {
       days.forEach(function (k) {
-        if (R.isAuto(state, e.id, k) && !R.isLocked(state, e.id, k)) setCell(e.id, k, '');
+        if (R.isLocked(state, e.id, k)) return;
+        var autoIds = R.autoIdsOn(state, e.id, k);
+        if (!autoIds.length) return;
+        // restano gli eventuali turni scritti a mano nello stesso giorno
+        setCell(e.id, k, R.shiftEntry(R.shiftIdsOn(state, e.id, k).filter(function (id) { return autoIds.indexOf(id) < 0; })));
       });
     });
     save();
@@ -853,8 +938,8 @@
     var f = $('#settings-form');
     f.maxWeeklyHours.value = state.settings.maxWeeklyHours;
     f.minRestHours.value = state.settings.minRestHours;
-    f.staffG.value = state.settings.staffPerShift.G;
-    f.staffN.value = state.settings.staffPerShift.N;
+    f.crewSize.value = state.settings.crewSize;
+    f.maxDailyHours.value = state.settings.maxDailyHours;
     f.perm104Hours.value = state.settings.perm104Hours;
     f.perm104PerMonth.value = state.settings.perm104PerMonth;
     f.tabelloneTitle.value = state.settings.tabelloneTitle || window.ExportXlsx.DEFAULT_TITLE;
@@ -869,7 +954,8 @@
       var f = ev.target;
       state.settings.maxWeeklyHours = +f.maxWeeklyHours.value || R.DEFAULT_SETTINGS.maxWeeklyHours;
       state.settings.minRestHours = +f.minRestHours.value >= 0 ? +f.minRestHours.value : R.DEFAULT_SETTINGS.minRestHours;
-      state.settings.staffPerShift = { G: Math.max(0, +f.staffG.value || 0), N: Math.max(0, +f.staffN.value || 0) };
+      state.settings.crewSize = f.crewSize.value !== '' && +f.crewSize.value >= 0 ? +f.crewSize.value : R.DEFAULT_SETTINGS.crewSize;
+      state.settings.maxDailyHours = +f.maxDailyHours.value > 0 ? +f.maxDailyHours.value : R.DEFAULT_SETTINGS.maxDailyHours;
       state.settings.perm104Hours = +f.perm104Hours.value >= 0 && f.perm104Hours.value !== ''
         ? +f.perm104Hours.value : R.DEFAULT_SETTINGS.perm104Hours;
       state.settings.tabelloneTitle = f.tabelloneTitle.value.trim() || window.ExportXlsx.DEFAULT_TITLE;
@@ -891,6 +977,199 @@
     });
   }
 
+  // ---------- Ambulanze e turni ----------
+
+  var DAY_LETTERS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+  var DAY_NAMES = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica'];
+
+  function newId(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function ambulances() { return state.settings.ambulances; }
+
+  function allShiftIds() {
+    var ids = [];
+    ambulances().forEach(function (a) { a.shifts.forEach(function (sh) { ids.push(sh.id); }); });
+    return ids;
+  }
+
+  // Turnazione 24 ore per l'ambulanza n (0 = prima): G/N, poi G2/N2, …
+  function preset24For(index) {
+    var used = allShiftIds();
+    return R.preset24h().map(function (sh) {
+      var copy = Object.assign({}, sh, { days: sh.days.slice() });
+      if (index > 0) copy.label = sh.label + (index + 1);
+      if (used.indexOf(copy.id) >= 0 || index > 0) copy.id = newId('s');
+      return copy;
+    });
+  }
+
+  function shiftDuration(sh) {
+    var a = R.parseTime(sh.start), b = R.parseTime(sh.end);
+    if (a == null || b == null) return '';
+    var h = b > a ? b - a : b + 24 - a;
+    return fmt(h) + ' h' + (a + h > 24 ? ' · notte' : '');
+  }
+
+  // Quante caselle usano i turni indicati (per avvisare prima di cancellarli).
+  function shiftUsage(ids) {
+    var n = 0;
+    Object.keys(state.assignments).forEach(function (emp) {
+      Object.keys(state.assignments[emp]).forEach(function (k) {
+        if (R.shiftIdsOf(state, state.assignments[emp][k]).some(function (id) { return ids.indexOf(id) >= 0; })) n++;
+      });
+    });
+    return n;
+  }
+
+  // Toglie i turni indicati da tutte le caselle (prima di eliminare turni o ambulanze).
+  function removeShiftsEverywhere(ids) {
+    Object.keys(state.assignments).forEach(function (emp) {
+      var a = state.assignments[emp];
+      Object.keys(a).forEach(function (k) {
+        var cur = R.shiftIdsOf(state, a[k]);
+        if (!cur.length || !cur.some(function (id) { return ids.indexOf(id) >= 0; })) return;
+        var rest = R.shiftEntry(cur.filter(function (id) { return ids.indexOf(id) < 0; }));
+        if (rest) a[k] = rest; else delete a[k];
+        if (state.auto[emp]) delete state.auto[emp][k];
+      });
+    });
+  }
+
+  function ambulancesChanged(msg) {
+    R.resetShiftCatalog();
+    save();
+    renderAll();
+    if (msg) toast(msg);
+  }
+
+  function renderAmbulances() {
+    var labels = {};
+    var h = '';
+    ambulances().forEach(function (a, ai) {
+      h += '<div class="amb" data-amb="' + esc(a.id) + '">' +
+        '<div class="amb-head"><label>Ambulanza <input class="amb-code" data-f="code" value="' + esc(a.code) +
+        '" maxlength="5" inputmode="numeric" pattern="\\d{5}" placeholder="5 cifre"></label>' +
+        (a.code ? '' : '<span class="amb-warn">inserisci il codice di 5 cifre</span>') +
+        '<span class="amb-actions"><button type="button" data-act="preset24" title="Sostituisce i turni con G 07–19 e N 19–07 tutti i giorni">Turnazione 24 ore</button>' +
+        '<button type="button" data-act="add-shift">+ Turno</button>' +
+        (ambulances().length > 1 ? '<button type="button" data-act="del-amb" class="danger">Elimina ambulanza</button>' : '') +
+        '</span></div>';
+      h += '<table class="list shifts"><thead><tr><th>Nome turno</th><th>Sigla</th><th>Inizio</th><th>Fine</th>' +
+        '<th>Durata</th><th>Giorni</th><th></th></tr></thead><tbody>';
+      if (!a.shifts.length) h += '<tr><td colspan="7" class="empty">Nessun turno: aggiungine uno.</td></tr>';
+      a.shifts.forEach(function (sh) {
+        var key = sh.label.toUpperCase();
+        labels[key] = (labels[key] || 0) + 1;
+        h += '<tr data-shift="' + esc(sh.id) + '">' +
+          '<td><input data-f="name" value="' + esc(sh.name) + '" placeholder="es. GIORNO"></td>' +
+          '<td><input data-f="label" class="sigla" value="' + esc(sh.label) + '" maxlength="3"></td>' +
+          '<td><input data-f="start" type="time" value="' + esc(sh.start) + '"></td>' +
+          '<td><input data-f="end" type="time" value="' + esc(sh.end) + '"></td>' +
+          '<td class="dur">' + esc(shiftDuration(sh)) + '</td><td class="days">' +
+          DAY_LETTERS.map(function (l, i) {
+            return '<label title="' + DAY_NAMES[i] + '"><input type="checkbox" data-f="day" data-day="' + i + '"' +
+              (sh.days[i] ? ' checked' : '') + '>' + l + '</label>';
+          }).join('') + '</td>' +
+          '<td><button type="button" data-act="del-shift" class="danger" title="Elimina turno">✕</button></td></tr>';
+      });
+      h += '</tbody></table></div>';
+    });
+    var dup = Object.keys(labels).filter(function (k) { return labels[k] > 1; });
+    if (dup.length) {
+      h += '<p class="amb-warn">Sigle ripetute (' + esc(dup.join(', ')) + '): usa sigle diverse, per esempio G2 e N2 ' +
+        'per la seconda ambulanza, così nel tabellone si capisce di quale turno si tratta.</p>';
+    }
+    $('#ambulances').innerHTML = h;
+  }
+
+  function initAmbulances() {
+    var box = $('#ambulances');
+    function find(el) {
+      var ambEl = el.closest('[data-amb]');
+      var amb = ambEl && ambulances().filter(function (a) { return a.id === ambEl.getAttribute('data-amb'); })[0];
+      var shEl = el.closest('[data-shift]');
+      var sh = amb && shEl && amb.shifts.filter(function (x) { return x.id === shEl.getAttribute('data-shift'); })[0];
+      return { amb: amb, sh: sh };
+    }
+
+    box.addEventListener('change', function (ev) {
+      var t = ev.target, f = t.getAttribute('data-f'), o = find(t);
+      if (!o.amb) return;
+      if (f === 'code') {
+        var v = t.value.trim();
+        if (v && !/^\d{5}$/.test(v)) { toast('Il codice dell\'ambulanza deve avere esattamente 5 cifre.', true); t.value = o.amb.code; return; }
+        if (v && ambulances().some(function (a) { return a !== o.amb && a.code === v; })) {
+          toast('C\'è già un\'ambulanza con il codice ' + v + '.', true); t.value = o.amb.code; return;
+        }
+        o.amb.code = v;
+        return ambulancesChanged();
+      }
+      if (!o.sh) return;
+      if (f === 'name') o.sh.name = t.value.trim().toUpperCase() || o.sh.name;
+      if (f === 'label') {
+        var lab = t.value.trim().toUpperCase();
+        if (!lab || R.RESERVED_CODES.indexOf(lab) >= 0) {
+          toast('Sigla non valida: F, M, P, R e C sono già usate per ferie, malattia, 104, riposo e formazione.', true);
+          t.value = o.sh.label; return;
+        }
+        o.sh.label = lab;
+      }
+      if (f === 'start' || f === 'end') {
+        if (R.parseTime(t.value) == null) { t.value = o.sh[f]; return; }
+        o.sh[f] = t.value;
+      }
+      if (f === 'day') o.sh.days[+t.getAttribute('data-day')] = t.checked;
+      ambulancesChanged();
+    });
+
+    box.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-act]');
+      if (!b) return;
+      var o = find(b), act = b.getAttribute('data-act');
+      if (!o.amb) return;
+      var name = o.amb.code ? 'l\'ambulanza ' + o.amb.code : 'questa ambulanza';
+      if (act === 'add-shift') {
+        o.amb.shifts.push({ id: newId('s'), name: 'TURNO', label: 'T' + (allShiftIds().length + 1),
+          start: '08:00', end: '14:00', days: [true, true, true, true, true, true, true] });
+        return ambulancesChanged('Turno aggiunto: imposta nome, sigla, orari e giorni.');
+      }
+      var ids = (act === 'del-shift' ? [o.sh] : o.amb.shifts).filter(Boolean).map(function (x) { return x.id; });
+      var used = shiftUsage(ids);
+      var warn = used ? '\nATTENZIONE: ' + used + ' caselle del tabellone usano ' +
+        (ids.length > 1 ? 'questi turni' : 'questo turno') + ' e verranno svuotate.' : '';
+      if (act === 'del-shift') {
+        if (!confirm('Eliminare il turno ' + o.sh.label + ' di ' + name + '?' + warn)) return;
+        snapshotAll();
+        removeShiftsEverywhere(ids);
+        o.amb.shifts = o.amb.shifts.filter(function (x) { return x !== o.sh; });
+        return ambulancesChanged('Turno eliminato.');
+      }
+      if (act === 'del-amb') {
+        if (!confirm('Eliminare ' + name + ' e tutti i suoi turni?' + warn)) return;
+        snapshotAll();
+        removeShiftsEverywhere(ids);
+        state.settings.ambulances = ambulances().filter(function (a) { return a !== o.amb; });
+        return ambulancesChanged('Ambulanza eliminata.');
+      }
+      if (act === 'preset24') {
+        if (!confirm('Impostare per ' + name + ' la turnazione 24 ore (G 07–19 e N 19–07 tutti i giorni)?' +
+          (o.amb.shifts.length ? ' I turni attuali dell\'ambulanza vengono sostituiti.' : '') + warn)) return;
+        snapshotAll();
+        removeShiftsEverywhere(ids);
+        o.amb.shifts = [];
+        o.amb.shifts = preset24For(ambulances().indexOf(o.amb));
+        return ambulancesChanged('Turnazione 24 ore impostata.');
+      }
+    });
+
+    $('#add-amb').addEventListener('click', function () {
+      var amb = { id: newId('A'), code: '', shifts: [] };
+      ambulances().push(amb);
+      amb.shifts = preset24For(ambulances().length - 1);
+      ambulancesChanged('Ambulanza aggiunta con turnazione 24 ore: inserisci il codice e modifica i turni se serve.');
+    });
+  }
+
   // ---------- Schede e avvio ----------
 
   function showTab(name) {
@@ -900,10 +1179,13 @@
   }
 
   function renderAll() {
+    R.resetShiftCatalog();
+    renderShiftTools();
     renderMonth();
     renderPeriodForm();
     renderEmployees();
     renderSettings();
+    renderAmbulances();
   }
 
   function changeMonth(delta) {
@@ -919,8 +1201,9 @@
     $all('.tab').forEach(function (t) {
       t.addEventListener('click', function () { showTab(t.getAttribute('data-tab')); });
     });
-    $all('.tool').forEach(function (b) {
-      b.addEventListener('click', function () { selectTool(b.getAttribute('data-tool')); });
+    $('.tools').addEventListener('click', function (ev) {
+      var b = ev.target.closest('.tool');
+      if (b) selectTool(b.getAttribute('data-tool'));
     });
     $('#training-hours').addEventListener('focus', function () { selectTool('C'); });
     $('#prev-month').addEventListener('click', function () { changeMonth(-1); });
@@ -951,6 +1234,7 @@
     initGridEvents();
     initEmployees();
     initSettings();
+    initAmbulances();
     renderAll();
     if (!state.employees.length) showTab('dipendenti');
   }

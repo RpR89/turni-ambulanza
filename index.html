@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=1.10">
+  <link rel="stylesheet" href="css/style.css?v=2.0">
 </head>
 <body>
   <header class="topbar no-print">
@@ -30,8 +30,7 @@
 
         <div class="tools" role="radiogroup" aria-label="Cosa inserire">
           <span class="tools-label">Inserisci:</span>
-          <button class="tool cell-G active" data-tool="G" title="Turno giorno 7–19 (tasto G)">G <small>7–19</small></button>
-          <button class="tool cell-N" data-tool="N" title="Turno notte 19–7 (tasto N)">N <small>19–7</small></button>
+          <span id="shift-tools" class="tool-group"></span>
           <button class="tool cell-F" data-tool="F" title="Ferie (tasto F)">F <small>ferie</small></button>
           <button class="tool cell-M" data-tool="M" title="Malattia (tasto M)">M <small>malattia</small></button>
           <button class="tool cell-P" data-tool="P" title="Permesso Legge 104 (tasto P)">P <small>104</small></button>
@@ -86,7 +85,8 @@
       </div>
 
       <p class="hint no-print">
-        Scegli cosa inserire e clicca sulle caselle (puoi anche trascinare). Da tastiera: frecce per muoverti,
+        Scegli cosa inserire e clicca sulle caselle (puoi anche trascinare). Con <kbd>Maiusc</kbd>+clic
+        aggiungi un turno a quelli già presenti nel giorno (o lo togli). Da tastiera: frecce per muoverti,
         <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd> per scrivere, <kbd>Canc</kbd> per cancellare,
         <kbd>L</kbd> per bloccare/sbloccare. Le caselle bloccate 🔒 non vengono mai cambiate dalla proposta automatica:
         blocca i turni che hai sistemato e usa <b>Rifai proposta</b> per ricalcolare il resto.
@@ -144,12 +144,23 @@
     <!-- ================= IMPOSTAZIONI ================= -->
     <section id="tab-impostazioni" class="panel">
       <div class="card">
+        <h3>Ambulanze e turni</h3>
+        <p class="note">
+          Per ogni ambulanza: il codice di 5 cifre e i turni, con orario di inizio e fine e i giorni in cui
+          è in servizio. <b>Turnazione 24 ore</b> imposta subito G 07–19 e N 19–07 tutti i giorni; con
+          <b>+ Turno</b> aggiungi fasce con orari diversi. Un turno che passa la mezzanotte conta come notte.
+          Ogni turno richiede le persone indicate sotto, con almeno un autista soccorritore.
+        </p>
+        <div id="ambulances"></div>
+        <button type="button" id="add-amb" class="primary">+ Aggiungi ambulanza</button>
+      </div>
+      <div class="card">
         <h3>Vincoli e copertura</h3>
         <form id="settings-form" class="settings">
           <label>Massimo ore settimanali <input type="number" name="maxWeeklyHours" min="1" step="1"></label>
           <label>Riposo minimo tra due turni (ore) <input type="number" name="minRestHours" min="0" step="1"></label>
-          <label>Persone richieste per turno giorno (7–19) <input type="number" name="staffG" min="0" step="1"></label>
-          <label>Persone richieste per turno notte (19–7) <input type="number" name="staffN" min="0" step="1"></label>
+          <label>Persone richieste per ogni turno <input type="number" name="crewSize" min="0" step="1"></label>
+          <label>Massimo ore al giorno <input type="number" name="maxDailyHours" min="1" step="0.5"></label>
           <label>Autisti soccorritori minimi per turno <input type="number" name="minDriversPerShift" min="0" step="1"></label>
           <label>Massimo turni uguali di fila (preferenza) <input type="number" name="maxSameInRow" min="1" step="1"></label>
           <label>Massimo weekend al mese (preferenza) <input type="number" name="maxWeekendsPerMonth" min="0" step="1"></label>
@@ -164,7 +175,9 @@
           Ferie e malattia nei giorni lun–ven valgono come ore svolte (stessa quota giornaliera).
           Ogni permesso 104 vale le ore indicate sopra, in qualsiasi giorno.
           La formazione conta come lavoro, anche nel massimo settimanale, e il giorno del corso non si può
-          smontare notte (niente N il giorno prima).
+          smontare notte (niente turno di notte il giorno prima).
+          Una persona può fare più turni nello stesso giorno solo se rispettano riposo minimo,
+          massimo giornaliero e settimanale.
           Ogni turno con personale deve avere almeno un autista soccorritore: la proposta automatica
           mette prima l'autista e poi, se possibile, un soccorritore.
           Preferenze (si superano solo se non c'è alternativa, in arancione): non più di 2 G o 2 N di fila,
@@ -188,13 +201,13 @@
     </section>
   </main>
 
-  <footer class="version no-print">Turni Ambulanza · versione 1.10 (cancella automatici)</footer>
+  <footer class="version no-print">Turni Ambulanza · versione 2.0 (ambulanze e turnazioni)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/rules.js?v=1.10"></script>
-  <script src="js/logo.js?v=1.10"></script>
-  <script src="js/export-xlsx.js?v=1.10"></script>
-  <script src="js/app.js?v=1.10"></script>
+  <script src="js/rules.js?v=2.0"></script>
+  <script src="js/logo.js?v=2.0"></script>
+  <script src="js/export-xlsx.js?v=2.0"></script>
+  <script src="js/app.js?v=2.0"></script>
 </body>
 </html>

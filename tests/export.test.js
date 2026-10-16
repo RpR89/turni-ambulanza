@@ -34,8 +34,8 @@ test('righe del tabellone: giorno, notte, formazione e assenze', () => {
   const rows = X.tabelloneRows(R, state, 2026, 10);
   assert.equal(rows[0].weekday, 'LUN');
   assert.equal(rows[0].date, '05-ott');
-  assert.deepEqual(rows[0].G, ['VERDI A.', 'ROSSI']); // prima l'autista
-  assert.deepEqual(rows[0].N, ['NERI']);
+  assert.deepEqual(rows[0].shifts.G, ['VERDI A.', 'ROSSI']); // prima l'autista
+  assert.deepEqual(rows[0].shifts.N, ['NERI']);
   assert.deepEqual(rows[1].training.filter(Boolean), ['NERI']);
   assert.deepEqual(rows[1].absences.slice(0, 2), ['ROSSI', 'BIANCHI']);
   assert.deepEqual(rows[2].absences.slice(0, 2), ['ROSSI', 'BIANCHI']); // stessa colonna nei giorni di fila

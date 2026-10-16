@@ -195,7 +195,6 @@ main { padding: 16px 20px 40px; }
   background: var(--accent); color: var(--accent-text); font-size: 10px; line-height: 16px;
   text-align: center; vertical-align: 1px;
 }
-.grid tfoot tr:not(.drivers) + tr.drivers > * { border-top: 1px dashed var(--muted); }
 .check { display: inline-flex; align-items: center; gap: 6px; }
 .grid td.cell.error { box-shadow: inset 0 0 0 2px var(--bad); color: var(--bad); }
 .grid td.cell.soft { box-shadow: inset 0 0 0 2px var(--warn); }
@@ -338,3 +337,19 @@ main { padding: 16px 20px 40px; }
   .card { border: none; padding: 0; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- Ambulanze e turni ---------- */
+
+.amb { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.amb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; font-weight: 600; }
+.amb-head .amb-code { width: 90px; margin-left: 6px; font-weight: 700; letter-spacing: 1px; }
+.amb-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.amb-warn { color: var(--warn); font-size: 12px; font-weight: 600; }
+.shifts input[data-f="name"] { width: 140px; }
+.shifts input.sigla { width: 56px; text-transform: uppercase; font-weight: 700; }
+.shifts td.dur { color: var(--muted); white-space: nowrap; }
+.shifts td.days { white-space: nowrap; }
+.shifts td.days label { display: inline-flex; flex-direction: column; align-items: center; font-size: 11px; margin-right: 4px; }
+.grid td.cell-multi { font-size: 9px; line-height: 1.05; }
+.grid td.cov.off { color: var(--muted); }
+.grid tfoot tr.first-cov > * { border-top: 2px solid var(--muted); }

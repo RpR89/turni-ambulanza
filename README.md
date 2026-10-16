@@ -1,10 +1,22 @@
 # Turni Ambulanza
 
 Web app per compilare i turni mensili dei dipendenti del comitato.
-Si apre da un link nel browser del computer. Non serve installare niente, non c'è login
-e non c'è un server con i dati.
+Si apre da un link nel browser del computer, senza installare niente.
+
+Con il back end attivo (Supabase, vedi [docs/SETUP-SUPABASE.md](docs/SETUP-SUPABASE.md)) si entra con
+un account e i turni di ogni unità sono salvati online; senza, l'app funziona senza login con i dati nel browser.
 
 ## Cosa fa
+
+- **Accesso utenti** (con il back end attivo):
+  - registrazione con nome, cognome, email, **unità di appartenenza** e **ruolo** (referente o vice referente),
+    accettando l'informativa privacy; solo indirizzi **@critn.it** (controllo anche nel database) e conferma via mail;
+  - accesso con email e password, recupero della password via mail;
+  - ogni utente vede e modifica solo i turni della **propria unità**, salvati online e condivisi tra
+    referente e vice referente; se due persone salvano insieme l'app lo segnala e chiede quale versione tenere;
+  - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti con unità, ruolo,
+    attivo/disattivo e amministratore, inserimento manuale di utenti con mail di invito;
+  - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 
 - **Ambulanze e turni** (scheda *Impostazioni*): ogni ambulanza ha un **codice di 5 cifre** e i suoi turni,
   ciascuno con nome (es. `GIORNO`), sigla (es. `G`), **ora di inizio e di fine** e **giorni della settimana**
@@ -86,7 +98,7 @@ e non c'è un server con i dati.
   Con una sola ambulanza 24 ore il foglio è identico al modello.
   - Comprende le settimane che iniziano con un lunedì del mese (ottobre 2026: dal 5/10 al 1/11).
   - In ogni turno l'autista è scritto per primo; in *FORMAZIONE* chi ha un corso; in *ASSENZE*
-    ferie, malattia e permessi 104 (chi è assente più giorni resta nella stessa colonna).
+    ferie, malattia, permessi 104 e richieste di riposo (chi è assente più giorni resta nella stessa colonna).
   - I nomi sono quelli del campo *Nome nel tabellone* (scheda Dipendenti): se è vuoto si usa il cognome,
     con le iniziali del nome quando due dipendenti hanno lo stesso cognome (`BETTEGA GI.`, `BETTEGA CH.`).
   - Il titolo si cambia in *Impostazioni*. *Note*, *EXTRA* e *MANIFESTAZIONI* restano da compilare a mano.
@@ -132,6 +144,11 @@ npm start    # server locale su http://localhost:8080
 ```
 
 - `js/rules.js`: calcolo ore, vincoli e proposta automatica (senza DOM, testato)
-- `js/app.js`: interfaccia
+- `js/app.js`: interfaccia del tabellone
+- `js/auth.js`, `js/config.js`: accesso, registrazione, amministrazione e salvataggio online (Supabase);
+  `js/vendor/supabase.min.js` è [supabase-js](https://github.com/supabase/supabase-js) 2.45.4 (licenza MIT)
+- `api/admin-invite.js`: funzione Vercel per l'inserimento manuale degli utenti (usa la chiave service_role)
+- `supabase/schema.sql`: tabelle e regole di sicurezza del database; `supabase/test/` le prove su un Postgres locale:
+  `psql -f supabase/test/mock_auth.sql -f supabase/schema.sql -f supabase/test/schema_test.sql`
 - `js/export-xlsx.js`: tabellone in Excel; `js/vendor/exceljs.min.js` è [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (licenza MIT)
 - `tests/rules.test.js`: test delle regole

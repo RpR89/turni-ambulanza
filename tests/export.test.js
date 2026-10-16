@@ -40,6 +40,7 @@ test('righe del tabellone: giorno, notte, formazione e assenze', () => {
   assert.deepEqual(rows[1].absences.slice(0, 2), ['ROSSI', 'BIANCHI']);
   assert.deepEqual(rows[2].absences.slice(0, 2), ['ROSSI', 'BIANCHI']); // stessa colonna nei giorni di fila
   assert.equal(rows[5].weekend, true);
-  assert.deepEqual(rows[5].absences.filter(Boolean), []); // la richiesta di riposo non è un'assenza
+  assert.deepEqual(rows[5].absences.filter(Boolean), ['BIANCHI']); // anche la richiesta di riposo va in ASSENZE
+  assert.ok(rows.every(r => r.extra.length === 0 && r.events.length === 0)); // EXTRA e MANIFESTAZIONI vuote
   assert.equal(rows[27].date, '01-nov');
 });

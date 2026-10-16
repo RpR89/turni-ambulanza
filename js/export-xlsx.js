@@ -104,12 +104,9 @@
       var withCode = function (codes) {
         return emps.filter(function (e) { return codes.indexOf(Rules.codeOn(state, e.id, k)) >= 0; }).map(name);
       };
-      var shifts = {}, extra = [];
+      var shifts = {};
       Rules.shiftCatalog(state).list.forEach(function (sh) {
-        var names = byDriverThenOrder(Rules.staffOn(state, k, sh.id)).map(name);
-        shifts[sh.id] = names.slice(0, 3);
-        // oltre la terza persona del turno si scrive in EXTRA
-        extra = extra.concat(names.slice(3));
+        shifts[sh.id] = byDriverThenOrder(Rules.staffOn(state, k, sh.id)).map(name).slice(0, 3);
       });
       return {
         key: k,
@@ -117,10 +114,11 @@
         date: p[2] + '-' + MONTHS_SHORT[+p[1] - 1],
         weekend: Rules.weekday(k) >= 5,
         shifts: shifts,
-        extra: extra.slice(0, 2),
+        // EXTRA e MANIFESTAZIONI restano vuote: le compila a mano chi usa il file
+        extra: [],
         training: slots('training', withCode(['C']), 5),
         events: [],
-        absences: slots('absences', withCode(['F', 'M', 'P']), 5)
+        absences: slots('absences', withCode(['F', 'M', 'P', 'R']), 5)
       };
     });
   }

@@ -414,9 +414,12 @@ body.auth-mode .topbar, body.auth-mode main, body.auth-mode footer.version { dis
 .auth-form input, .auth-form select { width: 100%; }
 .auth-form label.check input { width: auto; }
 
-/* Vista per ambulanza: i tabelloni delle altre ambulanze, sbiaditi e in sola lettura */
-.other-grids .other-grid { margin-top: 16px; }
-.other-grids h3 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; margin: 0 0 6px; }
-.other-grids h3 small { color: var(--muted); font-weight: normal; }
-.grid.faded { opacity: .45; pointer-events: none; user-select: none; }
+/* Vista per ambulanza: i turni delle altre ambulanze, sbiaditi nelle stesse caselle */
+.grid td.cell .ghost { opacity: .4; font-weight: 600; position: relative; }
+.grid td.cell small.ghost { font-size: 9px; }
+.grid td.cell-ghost::before { content: ""; position: absolute; inset: 0; opacity: .35; pointer-events: none; }
+.grid td.ghost-G::before { background: var(--g-bg); }
+.grid td.ghost-N::before { background: var(--n-bg); }
+.grid td.ghost-G .ghost { color: var(--g-fg); }
+.grid td.ghost-N .ghost { color: var(--n-fg); }
 .grid-view-field { margin-top: 14px; max-width: 460px; }

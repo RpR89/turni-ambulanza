@@ -200,8 +200,8 @@
   }
 
   // ---------- Vista per ambulanza ----------
-  // Con più ambulanze si può lavorare su un tabellone alla volta: quelli delle altre
-  // compaiono sotto, sbiaditi e in sola lettura. Ferie, malattia, ecc. valgono per tutti.
+  // Con più ambulanze si può lavorare su un tabellone alla volta: i turni delle altre
+  // compaiono sbiaditi nelle stesse caselle, sotto. Ferie, malattia, ecc. valgono per tutti.
 
   function perAmbulance() {
     return state.settings.gridView === 'perAmbulance' && ambulances().length > 1;
@@ -236,8 +236,18 @@
     if (code === 'P') return '104';
     if (code) return code;
     var ids = idsFor(entry, ambId);
-    var labels = ids.map(function (id) { return esc(R.shiftInfo(state, id).label); });
-    return ids.length > 1 ? '<span class="multi">' + labels.join('<br>') + '</span>' : labels.join('');
+    var label = function (id) { return esc(R.shiftInfo(state, id).label); };
+    var labels = ids.map(label);
+    var main = ids.length > 1 ? '<span class="multi">' + labels.join('<br>') + '</span>' : labels.join('');
+    // Turni delle altre ambulanze, sbiaditi sotto quelli del tabellone scelto
+    var others = otherIds(entry, ambId).map(label).join(' ');
+    if (!others) return main;
+    return main ? main + '<small class="ghost">' + others + '</small>' : '<span class="ghost">' + others + '</span>';
+  }
+
+  function otherIds(entry, ambId) {
+    if (!ambId) return [];
+    return R.shiftIdsOf(state, entry).filter(function (id) { return R.shiftInfo(state, id).ambId !== ambId; });
   }
 
   // Colore della casella: voce (F, M, …) oppure turno di giorno (G) / di notte (N).
@@ -245,7 +255,11 @@
     var code = R.codeOf(entry);
     if (code) return ' cell-' + code;
     var ids = idsFor(entry, ambId);
-    if (!ids.length) return '';
+    if (!ids.length) {
+      var others = otherIds(entry, ambId);
+      if (!others.length) return '';
+      return others.some(function (id) { return R.shiftInfo(state, id).night; }) ? ' cell-ghost ghost-N' : ' cell-ghost ghost-G';
+    }
     var night = ids.some(function (id) { return R.shiftInfo(state, id).night; });
     return (night ? ' cell-N' : ' cell-G') + (ids.length > 1 ? ' cell-multi' : '');
   }
@@ -281,37 +295,10 @@
     renderIssues(issues);
   }
 
+  // Tabellone del mese: con la vista per ambulanza mostra i turni di quella scelta
+  // e, sbiaditi nelle stesse caselle, quelli delle altre.
   function renderGrid(issues) {
-    var amb = viewAmb();
-    $('#grid').innerHTML = gridHtml(issues, amb, false);
-    $('#other-grids').innerHTML = amb ? ambulances().filter(function (a) { return a.id !== amb; }).map(function (a) {
-      return '<section class="other-grid"><h3>' + esc(ambName(a)) + ' <small>sola consultazione</small> ' +
-        '<button type="button" data-show-amb="' + esc(a.id) + '">Modifica questo tabellone</button></h3>' +
-        '<div class="grid-wrap"><table class="grid faded">' + gridHtml(issues, a.id, true) + '</table></div></section>';
-    }).join('') : '';
-    alignOtherGrids();
-  }
-
-  // I giorni dei tabelloni sbiaditi stanno esattamente sotto quelli del tabellone principale.
-  function alignOtherGrids() {
-    var tables = $all('#other-grids table');
-    var widths = $all('#grid thead th').map(function (th) { return th.getBoundingClientRect().width; });
-    if (!tables.length || !widths[0]) return;
-    var total = $('#grid').getBoundingClientRect().width;
-    tables.forEach(function (t) {
-      var old = t.querySelector('colgroup');
-      if (old) old.remove();
-      t.style.tableLayout = 'fixed';
-      t.style.width = total + 'px';
-      t.insertAdjacentHTML('afterbegin', '<colgroup>' + widths.map(function (w) {
-        return '<col style="width:' + w + 'px">';
-      }).join('') + '</colgroup>');
-    });
-  }
-
-  // Tabellone del mese. ambId: solo i turni di quell'ambulanza (null = tutti);
-  // readOnly: copia sbiadita da consultare (senza totali, blocchi e caselle modificabili).
-  function gridHtml(issues, ambId, readOnly) {
+    var ambId = viewAmb();
     var days = R.monthDays(view.y, view.m);
     var emps = activeEmployees();
     var todayKey = R.toKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
@@ -336,8 +323,7 @@
       var cls = (wd >= 5 ? 'weekend' : '') + (key === todayKey ? ' today' : '') + (wd === 0 ? ' monday' : '');
       h += '<th class="day ' + cls + '"><span>' + WEEKDAYS[wd] + '</span>' + (+key.slice(8)) + '</th>';
     });
-    if (readOnly) h += '<th colspan="7"></th></tr></thead><tbody>';
-    else h += '<th class="sum" title="Turni di notte nel mese">Notti</th>' +
+    h += '<th class="sum" title="Turni di notte nel mese">Notti</th>' +
       '<th class="sum" title="Weekend lavorati (basta il sabato o la domenica)">Week<br>end</th>' +
       '<th class="sum" title="Ore dei turni G e N">Turni<br>h</th>' +
       '<th class="sum" title="Ore di formazione">Form.<br>h</th>' +
@@ -359,17 +345,6 @@
           used + '/' + max + '</span>';
       }
       var info = R.ROLES[e.role] + (e.weeklyHours !== 38 ? ' · ' + contractLabel(e.weeklyHours) : '');
-      if (readOnly) {
-        h += '<tr><th class="name' + (R.isDriver(e) ? ' driver' : '') + '" title="' + esc(info) + '">' +
-          (R.isDriver(e) ? '<span class="drv" title="Autista soccorritore">A</span>' : '') + esc(e.name) + '</th>';
-        days.forEach(function (key) {
-          var entry = getEntry(e.id, key), wd = R.weekday(key);
-          h += '<td class="cell' + cellClass(entry, ambId) + (wd >= 5 ? ' weekend' : '') + (wd === 0 ? ' monday' : '') +
-            (cellAuto(e.id, key, ambId) ? ' auto' : '') + '">' + cellHtml(entry, ambId) + '</td>';
-        });
-        h += '<td colspan="7"></td></tr>';
-        return;
-      }
       h += '<tr><th class="name' + (R.isDriver(e) ? ' driver' : '') + '" title="' + esc(info) + '">' +
         '<button type="button" class="row-lock' + (rowLocked(e.id) ? ' on' : '') + '" data-lock-emp="' + esc(e.id) +
         '" title="' + (rowLocked(e.id) ? 'Sblocca' : 'Blocca') + ' tutto il mese di questo dipendente">' +
@@ -381,6 +356,10 @@
         var errs = cellErr[e.id + '|' + key];
         var softs = cellSoft[e.id + '|' + key];
         var tips = (errs || []).concat(softs || []);
+        var oth = otherIds(entry, ambId);
+        if (oth.length) {
+          tips.push('Altre ambulanze: ' + oth.map(function (id) { return R.shiftText(R.shiftInfo(state, id)); }).join(', '));
+        }
         var wd = R.weekday(key);
         var cls = 'cell' + cellClass(entry, ambId) + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
@@ -424,7 +403,7 @@
       });
       h += '<td colspan="7"></td></tr>';
     });
-    return h + '</tfoot>';
+    $('#grid').innerHTML = h + '</tfoot>';
   }
 
   // Notti e weekend medi per un tempo pieno, per evidenziare chi si discosta troppo.
@@ -569,7 +548,7 @@
     var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
     var amb = viewAmb();
-    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?locked| ?auto/g, '') + cellClass(entry, amb) +
+    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?cell-ghost| ?ghost-[GN]| ?locked| ?auto/g, '') + cellClass(entry, amb) +
       (R.isLocked(state, emp, key) ? ' locked' : '') + (cellAuto(emp, key, amb) ? ' auto' : '');
     td.innerHTML = cellHtml(entry, amb);
   }
@@ -1284,7 +1263,7 @@
       renderShiftTools();
       renderMonth();
       toast(ev.target.value === 'perAmbulance'
-        ? 'Nella scheda Turni scegli l\'ambulanza da modificare: le altre compaiono sotto, sbiadite.'
+        ? 'Nella scheda Turni scegli l\'ambulanza da modificare: i turni delle altre compaiono sbiaditi nelle caselle.'
         : 'Un solo tabellone con i turni di tutte le ambulanze.');
     });
 
@@ -1302,7 +1281,6 @@
     $all('.tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
     $all('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'tab-' + name); });
     if (name === 'dipendenti' && !state.employees.length) $('#emp-name').focus();
-    if (name === 'turni') alignOtherGrids();
   }
 
   function renderAll() {
@@ -1341,17 +1319,10 @@
       renderEmployees();
       renderPeriodForm();
     });
-    function showAmb(id) {
-      view.amb = id;
+    $('#amb-view-sel').addEventListener('change', function (ev) {
+      view.amb = ev.target.value;
       renderShiftTools();
       renderMonth();
-    }
-    $('#amb-view-sel').addEventListener('change', function (ev) { showAmb(ev.target.value); });
-    $('#other-grids').addEventListener('click', function (ev) {
-      var b = ev.target.closest('[data-show-amb]');
-      if (!b) return;
-      showAmb(b.getAttribute('data-show-amb'));
-      $('#grid').scrollIntoView({ block: 'nearest' });
     });
     $('#btn-generate').addEventListener('click', function () { generate(false); });
     $('#btn-regenerate').addEventListener('click', function () { generate(true); });
@@ -1370,7 +1341,6 @@
       }
     });
 
-    window.addEventListener('resize', alignOtherGrids);
     initGridEvents();
     initEmployees();
     initSettings();

@@ -26,7 +26,8 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 - **Visualizzazione con più ambulanze** (scheda *Impostazioni*, sotto le ambulanze):
   - *un solo tabellone*: ogni casella mostra i turni di tutte le ambulanze;
   - *un tabellone per ambulanza*: nella scheda *Turni* scegli l'ambulanza da modificare (menu *Tabellone*).
-    Sotto compaiono, sbiaditi e in sola lettura, i tabelloni delle altre ambulanze, con i giorni allineati.
+    Il tabellone delle altre ambulanze sta sotto, sovrapposto e sbiadito: nelle stesse caselle si vedono
+    in trasparenza i loro turni (passa sopra con il mouse per il dettaglio), così inserisci tenendone conto.
     Nel tabellone scelto si inseriscono e cancellano solo i turni di quell'ambulanza; ferie, malattia, 104,
     riposo e formazione valgono per tutte. Totali, controlli, proposta automatica ed Excel restano unici.
 - **Tabellone mensile**: una riga per dipendente e una colonna per giorno.

@@ -266,13 +266,15 @@ test('caselle bloccate: la proposta non le cambia e non riempie quelle vuote', (
 test('rifai proposta: ricalcola i turni non bloccati e conserva bloccati e assenze', () => {
   const employees = team();
   const s = makeState(employees, {});
-  const first = R.generateMonth(s, 2026, 10).assignments;
+  const gen = R.generateMonth(s, 2026, 10);
+  const first = gen.assignments;
   // l'utente sistema a mano e blocca due turni, più una richiesta di riposo
   const keptKey = Object.keys(first.e3).find(k => k.startsWith('2026-10'));
   const keptCode = first.e3[keptKey];
   first.e4['2026-10-15'] = 'R';
   const s2 = makeState(employees, first);
   s2.locks = { e3: { [keptKey]: true }, e5: { '2026-10-20': true } };
+  s2.auto = gen.auto;
   const e5Before = first.e5['2026-10-20'];
   const res = R.generateMonth(s2, 2026, 10, { regenerate: true });
   assert.equal(res.assignments.e3[keptKey], keptCode);
@@ -281,4 +283,27 @@ test('rifai proposta: ricalcola i turni non bloccati e conserva bloccati e assen
   const out = makeState(employees, res.assignments);
   assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
   assert.equal(res.uncovered.length, 0);
+});
+
+test('rifai proposta cambia solo i turni automatici; i turni scritti a mano restano', () => {
+  const employees = team();
+  const manual = { e0: { '2026-10-05': 'G', '2026-10-06': 'N' }, e7: { '2026-10-10': 'N' } };
+  const s = makeState(employees, JSON.parse(JSON.stringify(manual)));
+  const gen = R.generateMonth(s, 2026, 10);
+  // i turni a mano non sono segnati come automatici, quelli nuovi sì
+  assert.ok(!R.isAuto({ auto: gen.auto }, 'e0', '2026-10-05'));
+  const autoCount = Object.values(gen.auto).reduce((t, m) => t + Object.keys(m).length, 0);
+  assert.equal(autoCount, 31 * 4 - 3);
+  // l'utente aggiunge a mano un altro turno dopo la proposta
+  const after = JSON.parse(JSON.stringify(gen.assignments));
+  const free = R.monthDays(2026, 10).find(k => !after.e9[k] && !after.e9[R.addDays(k, -1)] && !after.e9[R.addDays(k, 1)]);
+  after.e9[free] = 'G';
+  const s2 = makeState(employees, after);
+  s2.auto = gen.auto;
+  const res = R.generateMonth(s2, 2026, 10, { regenerate: true });
+  assert.equal(res.assignments.e0['2026-10-05'], 'G');
+  assert.equal(res.assignments.e0['2026-10-06'], 'N');
+  assert.equal(res.assignments.e7['2026-10-10'], 'N');
+  assert.equal(res.assignments.e9[free], 'G');
+  assert.ok(!R.isAuto({ auto: res.auto }, 'e9', free));
 });

@@ -52,10 +52,14 @@ e non c'è un server con i dati.
   tra dipendenti. Supera le regole da evitare solo quando non c'è alternativa e lo segnala.
 - **Turni bloccati 🔒**: con lo strumento *blocca* (tasto <kbd>L</kbd>) blocchi le caselle che hai sistemato a mano.
   Il lucchetto accanto al nome blocca tutto il mese di un dipendente, *Blocca mese* blocca tutto.
-  Una casella bloccata, anche vuota, non viene mai cambiata dalla proposta automatica né da *Svuota mese*,
+  Una casella bloccata, anche vuota, non viene mai cambiata dalla proposta automatica né dal *Reset completo*,
   e non si modifica per sbaglio: va prima sbloccata.
-  **Rifai proposta** ricalcola da capo tutti i turni G/N non bloccati del mese
-  (ferie, malattia, permessi, richieste di riposo e formazione restano sempre).
+- **Turni a mano e turni automatici**: l'app ricorda quali turni ha inserito la proposta automatica
+  (mostrati in *corsivo*) e quali hai scritto tu (normali). Se modifichi a mano un turno automatico, diventa tuo.
+  - **Proposta automatica** riempie solo le caselle vuote.
+  - **Rifai proposta** ricalcola **solo i turni automatici** non bloccati: i turni scritti a mano,
+    ferie, malattia, permessi, richieste di riposo e formazione restano.
+  - **Reset completo** cancella tutto il mese, anche i turni scritti a mano; restano solo le caselle bloccate 🔒.
 - **Stampa** (A4 orizzontale) ed **esportazione CSV** per Excel.
 - **Backup**: i dati stanno nel browser. Con *Scarica backup* / *Carica backup* li salvi
   o li sposti su un altro computer.

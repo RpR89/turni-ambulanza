@@ -281,6 +281,8 @@ main { padding: 16px 20px 40px; }
 .list td.order { white-space: nowrap; width: 1%; }
 .list td.order button { padding: 2px 6px; font-size: 11px; }
 .list input[data-field="name"] { width: 100%; min-width: 200px; }
+.list input.short { width: 130px; text-transform: uppercase; }
+.settings label.wide { grid-column: span 2; }
 
 .settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; align-items: end; }
 .settings label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }

@@ -39,15 +39,15 @@ In **Authentication**:
 
 ## 4. Collega il sito a Supabase
 
-In Supabase apri **Project Settings → API** e copia:
+In Supabase apri **Project Settings** (oppure il pulsante **Connect** in alto) e copia:
 
 - **Project URL** (es. `https://abcdefgh.supabase.co`)
-- la chiave **anon public**
+- la **Publishable key** (`sb_publishable_…`, in *API Keys*) oppure la vecchia chiave **anon public** (`eyJ…`, scheda *Legacy API keys*)
 
 Inseriscili in [`js/config.js`](../js/config.js) (`supabaseUrl` e `supabaseAnonKey`), oppure mandali a chi
 mantiene l'app. Sono valori pubblici: la sicurezza è garantita dalle regole del database.
 
-> **Non** mettere mai nel codice la chiave **service_role**: dà accesso completo al database.
+> **Non** mettere mai nel codice la chiave **secret** / **service_role**: dà accesso completo al database.
 
 ## 5. Chiave segreta su Vercel (per l'inserimento manuale degli utenti)
 
@@ -56,7 +56,7 @@ In Vercel apri il progetto **turni-ambulanza → Settings → Environment Variab
 | Nome | Valore |
 |---|---|
 | `SUPABASE_URL` | il Project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | la chiave **service_role** (Project Settings → API) |
+| `SUPABASE_SERVICE_ROLE_KEY` | la **Secret key** (`sb_secret_…`, in *API Keys*) oppure la vecchia **service_role** |
 | `SITE_URL` | `https://turni-ambulanza.vercel.app` |
 
 Poi da **Deployments** fai **Redeploy** dell'ultima pubblicazione, perché le variabili vengano lette.

@@ -335,3 +335,26 @@ test('turni distribuiti in modo uniforme tra le settimane (notte della domenica 
     });
   });
 });
+
+test('formazione: il giorno del corso non si può smontare notte', () => {
+  const s = makeState([FT], { a: { '2026-10-14': 'N', '2026-10-15': { code: 'C', hours: 7 } } });
+  const errs = R.validateMonth(s, 2026, 10).filter(i => i.type === 'training');
+  assert.equal(errs.length, 1);
+  assert.deepEqual(errs[0].dates, ['2026-10-14', '2026-10-15']);
+  // la proposta non mette mai la notte il giorno prima del corso
+  const s2 = makeState([FT], { a: { '2026-10-15': { code: 'C', hours: 7 } } });
+  assert.equal(R.blockers(s2, 'a', '2026-10-14', 'N').length, 1);
+  assert.equal(R.blockers(s2, 'a', '2026-10-14', 'G').length, 0);
+  assert.equal(R.blockers(s2, 'a', '2026-10-16', 'G').length, 0);
+  // vale anche a cavallo di due mesi
+  const s3 = makeState([FT], { a: { '2026-10-31': 'N', '2026-11-01': { code: 'C', hours: 4 } } });
+  assert.equal(R.validateMonth(s3, 2026, 10).filter(i => i.type === 'training').length, 1);
+  assert.equal(R.validateMonth(s3, 2026, 11).filter(i => i.type === 'training').length, 1);
+
+  const employees = team();
+  const fixed = {};
+  employees.forEach((e, i) => { fixed[e.id] = { [R.toKey(2026, 10, 5 + i)]: { code: 'C', hours: 7 } }; });
+  const res = R.generateMonth(makeState(employees, fixed), 2026, 10);
+  const out = makeState(employees, res.assignments);
+  assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+});

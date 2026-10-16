@@ -316,6 +316,11 @@
       }
     });
 
+    // La notte finisce alle 7 del giorno dopo: non si può smontare notte il giorno di un corso.
+    if (code === 'N' && codeOn(state, empId, addDays(key, 1)) === 'C') {
+      reasons.push('il ' + addDays(key, 1) + ' c\'è la formazione: non può smontare notte quel giorno');
+    }
+
     var monday = weekStart(key);
     var hours = round1(weekHours(state, empId, monday) - workHoursOn(state, empId, key) + SHIFTS[code].hours);
     if (hours > cfg.maxWeeklyHours) {
@@ -402,6 +407,18 @@
           message: weList.length + ' weekend lavorati nel mese (da evitare più di ' + maxWe + ')'
         });
       }
+
+      // Formazione: il giorno del corso non può smontare notte (N il giorno prima).
+      days.concat([addDays(last, 1)]).forEach(function (k) {
+        var prev = addDays(k, -1);
+        if (codeOn(state, emp.id, k) === 'C' && codeOn(state, emp.id, prev) === 'N' &&
+          (k >= first && k <= last || prev >= first)) {
+          issues.push({
+            level: 'error', type: 'training', empId: emp.id, dates: [prev, k],
+            message: 'Notte del ' + prev + ' e formazione il ' + k + ': non può smontare notte il giorno del corso'
+          });
+        }
+      });
 
       // Permessi 104: solo per chi ne ha diritto e al massimo N nel mese.
       var perms = days.filter(function (k) { return codeOn(state, emp.id, k) === 'P'; });

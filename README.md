@@ -28,6 +28,8 @@ e non c'è un server con i dati.
     In pratica non sono ammessi una `N` seguita da una `G` il giorno dopo, né `G` e `N` nello stesso giorno.
   - **almeno un autista soccorritore** in ogni turno: ogni dipendente è *Autista soccorritore*
     (con patente) oppure *Soccorritore* (senza patente). Gli autisti sono segnati con una **A** accanto al nome.
+  - **niente notte il giorno prima di un corso**: con la formazione (`C`) il giorno X,
+    la notte del giorno prima (che finisce alle 7 del giorno X) non è ammessa;
   - **permessi 104**: al massimo 3 nel mese di calendario e solo per chi ha diritto alla 104.
     Accanto al nome compare il contatore dei permessi usati (es. `104 · 2/3`).
 - **Regole da evitare** (superabili solo se non c'è alternativa, caselle in arancione):

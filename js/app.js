@@ -322,22 +322,33 @@
 
   function renderWeeks() {
     var weeks = R.monthWeeks(view.y, view.m);
+    var days = R.monthDays(view.y, view.m);
     var max = state.settings.maxWeeklyHours;
+    var full = weeks.filter(function (w) { return days.indexOf(w) >= 0 && days.indexOf(R.addDays(w, 6)) >= 0; });
     var h = '<thead><tr><th class="name">Dipendente</th>';
     weeks.forEach(function (w) {
       h += '<th>' + fmtDate(w) + '–' + fmtDate(R.addDays(w, 6)) + '</th>';
     });
     h += '</tr></thead><tbody>';
     activeEmployees().forEach(function (e) {
+      // Settimane intere del mese: turni (notte della domenica esclusa) troppo diversi tra loro?
+      var counts = full.map(function (w) { return R.weekShiftCount(state, e.id, w); });
+      var lo = Math.min.apply(null, counts), hi = Math.max.apply(null, counts);
+      var uneven = counts.length > 1 && hi - lo > 1;
       h += '<tr><th class="name">' + esc(e.name) + '</th>';
       weeks.forEach(function (w) {
         var hrs = R.weekHours(state, e.id, w);
-        h += '<td class="' + (hrs > max ? 'under' : '') + '">' + (hrs ? fmt(hrs) : '–') + '</td>';
+        var n = R.weekShiftCount(state, e.id, w);
+        var isFull = full.indexOf(w) >= 0;
+        var cls = hrs > max ? 'under' : uneven && isFull && (n === lo || n === hi) ? 'over' : '';
+        h += '<td class="' + cls + '"' + (uneven && isFull ? ' title="Settimane sbilanciate: da ' + lo + ' a ' + hi +
+          ' turni"' : '') + '>' + (hrs ? fmt(hrs) + ' h · ' + n + (n === 1 ? ' turno' : ' turni') : '–') + '</td>';
       });
       h += '</tr>';
     });
     $('#weeks').innerHTML = h + '</tbody>';
   }
+
 
   function renderIssues(issues) {
     var errors = issues.filter(function (i) { return i.level === 'error'; });

@@ -229,6 +229,19 @@
     return n;
   }
 
+  // Turni della settimana (lun–dom) per l'equilibrio settimanale; la notte della domenica
+  // non conta, perché finisce nella settimana dopo. Con `onlyMonth` solo i giorni del mese.
+  function weekShiftCount(state, empId, monday, onlyMonth) {
+    var n = 0;
+    for (var i = 0; i < 7; i++) {
+      var k = addDays(monday, i);
+      if (onlyMonth && k.slice(0, 7) !== onlyMonth) continue;
+      var c = codeOn(state, empId, k);
+      if (SHIFTS[c] && !(i === 6 && c === 'N')) n++;
+    }
+    return n;
+  }
+
   // Peso del contratto per confrontare notti e weekend: part-time 24 h → 24/38.
   function contractWeight(state, emp) {
     return (emp.weeklyHours || 38) / settingNum(state, 'fullTimeWeeklyHours');
@@ -503,7 +516,11 @@
 
     var uncovered = [];
     var bypassed = [];
-    monthDays(y, m).forEach(function (key) {
+    // Prima i weekend (il limite di 2 al mese è il vincolo più stretto), poi i giorni feriali.
+    var allDays = monthDays(y, m);
+    var order = allDays.filter(function (k) { return weekday(k) >= 5; })
+      .concat(allDays.filter(function (k) { return weekday(k) < 5; }));
+    order.forEach(function (key) {
       var weekend = weekday(key) >= 5;
       var wStart = weekStart(key);
       ['G', 'N'].forEach(function (code) {
@@ -543,6 +560,7 @@
               inWeekend: we.some(function (w) { return w.week === wStart; }) ? 0 : 1,
               weekends: we.length / weight[e.id],
               nights: nights[e.id] / weight[e.id],
+              week: weekShiftCount(work, e.id, wStart) / weight[e.id],
               // -1 continua un blocco di 1-2 giorni, +1 sarebbe il 4° giorno di fila, 0 altrimenti
               pattern: streak >= 3 ? 1 : streak >= 1 ? -1 : 0
             };
@@ -557,6 +575,8 @@
             }
             // Non allungare un blocco oltre i 3 giorni (G G N, G N N), se c'è chi può farlo.
             if ((ia.pattern > 0) !== (ib.pattern > 0)) return ia.pattern > 0 ? 1 : -1;
+            // Turni distribuiti in modo uniforme tra le settimane.
+            if (Math.abs(ia.week - ib.week) >= 1) return ia.week - ib.week;
             if (code === 'N' && Math.abs(ia.nights - ib.nights) >= 1) return ia.nights - ib.nights;
             // Risparmia gli autisti, ma solo finché non restano troppo indietro con le ore.
             if (preferNonDrivers && isDriver(a) !== isDriver(b) && Math.abs(ia.ratio - ib.ratio) < 0.1) {
@@ -638,6 +658,12 @@
       return n;
     }
 
+    var weeks = monthWeeks(y, m).map(function (w) {
+      var n = 0;
+      for (var i = 0; i < 7; i++) if (addDays(w, i).slice(0, 7) === days[0].slice(0, 7)) n++;
+      return { monday: w, days: n };
+    });
+
     function cost(e) {
       var id = e.id, c = 0;
       // regole da evitare
@@ -655,7 +681,11 @@
         prev = isShift ? code : '';
       }
       var we = weekendsWorked(work, id, y, m).length;
-      if (we > maxWe) c += 100 * (we - maxWe);
+      if (we > maxWe) c += 300 * (we - maxWe);
+      // equilibrio tra le settimane: ogni settimana in proporzione ai suoi giorni nel mese
+      var monthKey = days[0].slice(0, 7), tot = 0, wc = [];
+      weeks.forEach(function (w) { var n = weekShiftCount(work, id, w.monday, monthKey); wc.push(n); tot += n; });
+      weeks.forEach(function (w, i) { var d = wc[i] - tot * w.days / days.length; c += 5 * d * d; });
       var share = weight[id] / totW;
       var dn = countCode(id, 'N') - totN * share;
       var dw = we - totWe * share;
@@ -755,6 +785,7 @@
     monthWeekends: monthWeekends,
     weekendsWorked: weekendsWorked,
     softBlockers: softBlockers,
+    weekShiftCount: weekShiftCount,
     generateMonth: generateMonth
   };
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=1.7">
+  <link rel="stylesheet" href="css/style.css?v=1.8">
 </head>
 <body>
   <header class="topbar no-print">
@@ -96,7 +96,8 @@
 
       <div class="below">
         <section class="card">
-          <h3>Ore per settimana <small>(lun–dom, massimo <span class="max-week"></span> h)</small></h3>
+          <h3>Ore e turni per settimana <small>(lun–dom, massimo <span class="max-week"></span> h; nel numero di turni
+            la notte della domenica non conta; in arancione le settimane troppo sbilanciate)</small></h3>
           <div class="grid-wrap"><table id="weeks" class="grid small"></table></div>
         </section>
         <section class="card no-print">
@@ -184,11 +185,11 @@
     </section>
   </main>
 
-  <footer class="version no-print">Turni Ambulanza · versione 1.7 (turni manuali protetti)</footer>
+  <footer class="version no-print">Turni Ambulanza · versione 1.8 (weekend e settimane bilanciati)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/rules.js?v=1.7"></script>
-  <script src="js/app.js?v=1.7"></script>
+  <script src="js/rules.js?v=1.8"></script>
+  <script src="js/app.js?v=1.8"></script>
 </body>
 </html>

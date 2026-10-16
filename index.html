@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=1.9">
+  <link rel="stylesheet" href="css/style.css?v=1.10">
 </head>
 <body>
   <header class="topbar no-print">
@@ -47,6 +47,7 @@
         <div class="actions">
           <button id="btn-generate" class="primary" title="Riempie solo i turni scoperti, senza toccare quelli già inseriti">Proposta automatica</button>
           <button id="btn-regenerate" title="Ricalcola solo i turni inseriti dalla proposta automatica (non quelli scritti a mano né i bloccati)">Rifai proposta</button>
+          <button id="btn-clear-auto" title="Cancella solo i turni inseriti dalla proposta automatica (in corsivo); restano quelli scritti a mano e i bloccati">Cancella automatici</button>
           <button id="btn-lock-month" title="Blocca o sblocca tutte le caselle del mese">🔒 Blocca mese</button>
           <button id="btn-undo" title="Annulla l'ultima modifica (Ctrl+Z)">Annulla</button>
           <button id="btn-clear-month" class="danger" title="Cancella tutto il mese, anche i turni scritti a mano, tranne le caselle bloccate">Reset completo</button>
@@ -187,13 +188,13 @@
     </section>
   </main>
 
-  <footer class="version no-print">Turni Ambulanza · versione 1.9 (esporta Excel)</footer>
+  <footer class="version no-print">Turni Ambulanza · versione 1.10 (cancella automatici)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/rules.js?v=1.9"></script>
-  <script src="js/logo.js?v=1.9"></script>
-  <script src="js/export-xlsx.js?v=1.9"></script>
-  <script src="js/app.js?v=1.9"></script>
+  <script src="js/rules.js?v=1.10"></script>
+  <script src="js/logo.js?v=1.10"></script>
+  <script src="js/export-xlsx.js?v=1.10"></script>
+  <script src="js/app.js?v=1.10"></script>
 </body>
 </html>

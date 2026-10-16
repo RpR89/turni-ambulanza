@@ -650,6 +650,29 @@
   }
 
   // Reset completo: cancella tutto il mese, anche i turni scritti a mano. Restano solo le caselle bloccate.
+  // Cancella solo i turni messi dalla proposta automatica (in corsivo) e non bloccati:
+  // restano i turni scritti o modificati a mano, i bloccati 🔒 e tutte le altre voci.
+  function clearAuto() {
+    var days = R.monthDays(view.y, view.m);
+    var found = 0;
+    activeEmployees().forEach(function (e) {
+      days.forEach(function (k) { if (R.isAuto(state, e.id, k) && !R.isLocked(state, e.id, k)) found++; });
+    });
+    if (!found) return toast('In ' + MONTHS[view.m - 1].toLowerCase() + ' non ci sono turni automatici da cancellare.');
+    if (!confirm('Cancellare i ' + found + ' turni inseriti dalla proposta automatica in ' + MONTHS[view.m - 1] + '?\n' +
+      'Restano i turni scritti o modificati a mano, quelli bloccati 🔒, ferie, malattia, permessi, ' +
+      'richieste di riposo e formazione. Puoi annullare con "Annulla".')) return;
+    snapshot();
+    activeEmployees().forEach(function (e) {
+      days.forEach(function (k) {
+        if (R.isAuto(state, e.id, k) && !R.isLocked(state, e.id, k)) setCell(e.id, k, '');
+      });
+    });
+    save();
+    renderMonth();
+    toast(found + ' turni automatici cancellati.');
+  }
+
   function clearMonth() {
     if (!confirm('RESET COMPLETO di ' + MONTHS[view.m - 1] + ' ' + view.y + '?\n' +
       'Vengono cancellati TUTTI i turni, anche quelli inseriti a mano, e ferie, malattie, permessi, ' +
@@ -913,6 +936,7 @@
     $('#btn-lock-month').addEventListener('click', toggleMonthLock);
     $('#btn-undo').addEventListener('click', undo);
     $('#btn-clear-month').addEventListener('click', clearMonth);
+    $('#btn-clear-auto').addEventListener('click', clearAuto);
     $('#period-form').addEventListener('submit', insertPeriod);
     $('#btn-print').addEventListener('click', function () { window.print(); });
     $('#btn-excel').addEventListener('click', exportExcel);

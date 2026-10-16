@@ -66,6 +66,8 @@ e non c'è un server con i dati.
   - **Proposta automatica** riempie solo le caselle vuote.
   - **Rifai proposta** ricalcola **solo i turni automatici** non bloccati: i turni scritti a mano,
     ferie, malattia, permessi, richieste di riposo e formazione restano.
+  - **Cancella automatici** toglie **solo i turni automatici** non bloccati, senza ricalcolarli:
+    restano i turni scritti o modificati a mano, i bloccati e tutte le altre voci.
   - **Reset completo** cancella tutto il mese, anche i turni scritti a mano; restano solo le caselle bloccate 🔒.
 - **Stampa** (A4 orizzontale).
 - **Esporta Excel**: scarica il *Tabellone turni* in formato `.xlsx`, con lo stesso aspetto

@@ -307,3 +307,54 @@ test('rifai proposta cambia solo i turni automatici; i turni scritti a mano rest
   assert.equal(res.assignments.e9[free], 'G');
   assert.ok(!R.isAuto({ auto: res.auto }, 'e9', free));
 });
+
+test('weekend: al massimo 2 contando anche quelli inseriti a mano', () => {
+  const employees = team();
+  const we = R.monthWeekends(2027, 1);
+  // e0 ha già 2 weekend scritti a mano: la proposta non deve dargliene un terzo
+  const s = makeState(employees, { e0: { [we[0].days[0]]: 'G', [we[2].days[1]]: 'N' } });
+  const res = R.generateMonth(s, 2027, 1);
+  const out = makeState(employees, res.assignments);
+  assert.equal(R.monthSummary(out, employees[0], 2027, 1).weekends, 2);
+  employees.forEach(e => assert.ok(R.monthSummary(out, e, 2027, 1).weekends <= 2, e.id));
+});
+
+test('turni distribuiti in modo uniforme tra le settimane (notte della domenica esclusa)', () => {
+  // la notte della domenica non conta nella settimana
+  const s0 = makeState([FT], { a: { '2026-10-12': 'G', '2026-10-18': 'N' } });
+  assert.equal(R.weekShiftCount(s0, 'a', '2026-10-12'), 1);
+  [[2026, 11], [2027, 3]].forEach(([y, m]) => {
+    const employees = team();
+    const res = R.generateMonth(makeState(employees, {}), y, m);
+    const out = makeState(employees, res.assignments);
+    const days = R.monthDays(y, m);
+    const full = R.monthWeeks(y, m).filter(w => days.includes(w) && days.includes(R.addDays(w, 6)));
+    employees.forEach(e => {
+      const counts = full.map(w => R.weekShiftCount(out, e.id, w));
+      assert.ok(Math.max(...counts) - Math.min(...counts) <= 1, y + '-' + m + ' ' + e.id + ': ' + counts);
+    });
+  });
+});
+
+test('formazione: il giorno del corso non si può smontare notte', () => {
+  const s = makeState([FT], { a: { '2026-10-14': 'N', '2026-10-15': { code: 'C', hours: 7 } } });
+  const errs = R.validateMonth(s, 2026, 10).filter(i => i.type === 'training');
+  assert.equal(errs.length, 1);
+  assert.deepEqual(errs[0].dates, ['2026-10-14', '2026-10-15']);
+  // la proposta non mette mai la notte il giorno prima del corso
+  const s2 = makeState([FT], { a: { '2026-10-15': { code: 'C', hours: 7 } } });
+  assert.equal(R.blockers(s2, 'a', '2026-10-14', 'N').length, 1);
+  assert.equal(R.blockers(s2, 'a', '2026-10-14', 'G').length, 0);
+  assert.equal(R.blockers(s2, 'a', '2026-10-16', 'G').length, 0);
+  // vale anche a cavallo di due mesi
+  const s3 = makeState([FT], { a: { '2026-10-31': 'N', '2026-11-01': { code: 'C', hours: 4 } } });
+  assert.equal(R.validateMonth(s3, 2026, 10).filter(i => i.type === 'training').length, 1);
+  assert.equal(R.validateMonth(s3, 2026, 11).filter(i => i.type === 'training').length, 1);
+
+  const employees = team();
+  const fixed = {};
+  employees.forEach((e, i) => { fixed[e.id] = { [R.toKey(2026, 10, 5 + i)]: { code: 'C', hours: 7 } }; });
+  const res = R.generateMonth(makeState(employees, fixed), 2026, 10);
+  const out = makeState(employees, res.assignments);
+  assert.equal(R.validateMonth(out, 2026, 10).filter(i => i.level === 'error').length, 0);
+});

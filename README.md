@@ -28,11 +28,17 @@ e non c'è un server con i dati.
     In pratica non sono ammessi una `N` seguita da una `G` il giorno dopo, né `G` e `N` nello stesso giorno.
   - **almeno un autista soccorritore** in ogni turno: ogni dipendente è *Autista soccorritore*
     (con patente) oppure *Soccorritore* (senza patente). Gli autisti sono segnati con una **A** accanto al nome.
+  - **niente notte il giorno prima di un corso**: con la formazione (`C`) il giorno X,
+    la notte del giorno prima (che finisce alle 7 del giorno X) non è ammessa;
   - **permessi 104**: al massimo 3 nel mese di calendario e solo per chi ha diritto alla 104.
     Accanto al nome compare il contatore dei permessi usati (es. `104 · 2/3`).
 - **Regole da evitare** (superabili solo se non c'è alternativa, caselle in arancione):
   - non più di **2 G o 2 N di fila**: meglio blocchi alternati tipo `G G N` o `G N N`;
-  - non più di **2 weekend al mese**: un weekend conta anche se si lavora solo il sabato o solo la domenica.
+  - non più di **2 weekend al mese**: un weekend conta anche se si lavora solo il sabato o solo la domenica,
+    e contano anche i turni inseriti a mano;
+  - turni **distribuiti in modo uniforme tra le settimane** (es. 2-3 ogni settimana, non 4 e poi 1);
+    nel conteggio la notte della domenica non conta. Nella tabella *Ore e turni per settimana*
+    le settimane troppo sbilanciate sono in arancione.
 - **Equilibrio**: le colonne *Notti* e *Weekend* mostrano quanti ne ha fatti ciascuno.
   Il valore è evidenziato quando si discosta troppo dalla media, calcolata in proporzione al contratto.
 - **Monte ore mensile** per ogni dipendente:
@@ -47,6 +53,7 @@ e non c'è un server con i dati.
   Rispetta sempre i vincoli e dà la precedenza a chi è più indietro con il monte ore.
   In ogni turno mette prima un autista soccorritore e poi, se possibile, un soccorritore,
   così gli autisti restano disponibili per gli altri turni.
+  Pianifica prima i weekend, poi i giorni feriali.
   Cerca di formare blocchi `G G N` / `G N N`, di far lavorare la stessa persona sabato e domenica
   e di distribuire notti, weekend e ore in modo equo. Poi prova a migliorare il mese con degli scambi
   tra dipendenti. Supera le regole da evitare solo quando non c'è alternativa e lo segnala.

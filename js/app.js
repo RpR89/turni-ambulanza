@@ -268,6 +268,12 @@
     return sh.name + (sh.ambCode ? ' · ambulanza ' + sh.ambCode : '') + ' · ' + sh.startText + '–' + sh.endText;
   }
 
+  // Nome corto per il telefono: cognome e iniziale del nome (es. "Rossi M.").
+  function shortName(name) {
+    var parts = String(name).trim().split(/\s+/);
+    return parts.length > 1 ? parts[0] + ' ' + parts[1].charAt(0) + '.' : parts[0];
+  }
+
   function perm104Count(empId) {
     return R.monthDays(view.y, view.m).filter(function (k) { return R.codeOn(state, empId, k) === 'P'; }).length;
   }
@@ -349,7 +355,8 @@
         '<button type="button" class="row-lock' + (rowLocked(e.id) ? ' on' : '') + '" data-lock-emp="' + esc(e.id) +
         '" title="' + (rowLocked(e.id) ? 'Sblocca' : 'Blocca') + ' tutto il mese di questo dipendente">' +
         (rowLocked(e.id) ? '🔒' : '🔓') + '</button>' +
-        (R.isDriver(e) ? '<span class="drv" title="Autista soccorritore">A</span>' : '') + esc(e.name) + tag +
+        (R.isDriver(e) ? '<span class="drv" title="Autista soccorritore">A</span>' : '') +
+        '<span class="nm-full">' + esc(e.name) + '</span><span class="nm-short">' + esc(shortName(e.name)) + '</span>' + tag +
         '<small>' + esc(info) + '</small></th>';
       days.forEach(function (key, col) {
         var entry = getEntry(e.id, key);
@@ -488,6 +495,7 @@
   // ---------- Inserimento nel tabellone ----------
 
   var painting = null; // valore che si sta "dipingendo" trascinando il mouse
+  var addMode = false;  // pulsante "aggiungi turno": come Maiusc+clic (utile sul telefono)
   var paintMode = null; // 'add'/'remove' con Maiusc: aggiunge o toglie un turno nel giorno
 
   function setLock(empId, key, on) {
@@ -586,7 +594,7 @@
       if (tool === 'L') {
         // Il primo clic decide se il trascinamento blocca o sblocca.
         painting = R.isLocked(state, td.getAttribute('data-emp'), td.getAttribute('data-date')) ? 'L-' : 'L+';
-      } else if (ev.shiftKey && isShiftCode(tool)) {
+      } else if ((ev.shiftKey || addMode) && isShiftCode(tool)) {
         // Maiusc+clic: aggiunge il turno a quelli del giorno (o lo toglie se c'è già).
         painting = tool;
         paintMode = R.shiftIdsOn(state, td.getAttribute('data-emp'), td.getAttribute('data-date')).indexOf(tool) >= 0
@@ -1280,6 +1288,22 @@
 
   // ---------- Schede e avvio ----------
 
+  // Menu a tendina del telefono: schede e utente (☰ in alto), azioni secondarie ("Altro").
+  function initMenus() {
+    var bar = $('.topbar'), btn = $('#menu-btn');
+    var more = $('#more-actions'), moreBtn = $('#actions-more');
+    function setMenu(open) { bar.classList.toggle('open', open); btn.setAttribute('aria-expanded', String(open)); }
+    function setMore(open) { more.classList.toggle('open', open); moreBtn.setAttribute('aria-expanded', String(open)); }
+    btn.addEventListener('click', function (ev) { ev.stopPropagation(); setMenu(!bar.classList.contains('open')); });
+    moreBtn.addEventListener('click', function (ev) { ev.stopPropagation(); setMore(!more.classList.contains('open')); });
+    bar.addEventListener('click', function (ev) { if (ev.target.closest('.tab')) setMenu(false); });
+    more.addEventListener('click', function (ev) { if (ev.target.closest('button')) setMore(false); });
+    document.addEventListener('click', function (ev) {
+      if (!ev.target.closest('.topbar')) setMenu(false);
+      if (!ev.target.closest('#more-actions')) setMore(false);
+    });
+  }
+
   function showTab(name) {
     $all('.tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
     $all('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'tab-' + name); });
@@ -1314,6 +1338,13 @@
       if (b) selectTool(b.getAttribute('data-tool'));
     });
     $('#training-hours').addEventListener('focus', function () { selectTool('C'); });
+    $('#add-mode').addEventListener('click', function () {
+      addMode = !addMode;
+      this.setAttribute('aria-pressed', String(addMode));
+      toast(addMode ? 'Aggiungi turno attivo: il turno scelto si aggiunge a quelli già presenti nel giorno (o si toglie).'
+        : 'Aggiungi turno disattivato: il turno scelto sostituisce quello della casella.');
+    });
+    initMenus();
     $('#prev-month').addEventListener('click', function () { changeMonth(-1); });
     $('#next-month').addEventListener('click', function () { changeMonth(1); });
     $('#today').addEventListener('click', function () {
@@ -1331,6 +1362,7 @@
     $('#btn-regenerate').addEventListener('click', function () { generate(true); });
     $('#btn-lock-month').addEventListener('click', toggleMonthLock);
     $('#btn-undo').addEventListener('click', undo);
+    $('#btn-undo-m').addEventListener('click', undo);
     $('#btn-clear-month').addEventListener('click', clearMonth);
     $('#btn-clear-auto').addEventListener('click', clearAuto);
     $('#period-form').addEventListener('submit', insertPeriod);

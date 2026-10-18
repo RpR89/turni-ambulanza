@@ -5,12 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=2.4">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#c62828">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Turni">
+  <link rel="stylesheet" href="css/style.css?v=2.5">
 </head>
 <body>
   <header class="topbar no-print">
     <h1>Turni Ambulanza</h1>
-    <nav class="tabs" role="tablist">
+    <button type="button" id="menu-btn" class="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">☰</button>
+    <nav class="tabs" id="main-menu" role="tablist">
       <button class="tab active" data-tab="turni">Turni</button>
       <button class="tab" data-tab="dipendenti">Dipendenti</button>
       <button class="tab" data-tab="impostazioni">Impostazioni</button>
@@ -101,6 +108,8 @@
         <div class="tools" role="radiogroup" aria-label="Cosa inserire">
           <span class="tools-label">Inserisci:</span>
           <span id="shift-tools" class="tool-group"></span>
+          <button type="button" id="add-mode" class="add-mode" aria-pressed="false"
+            title="Attivo: toccando una casella il turno scelto si aggiunge a quelli del giorno (o si toglie se c'è già), come Maiusc+clic">＋ <small>aggiungi turno</small></button>
           <button class="tool cell-F" data-tool="F" title="Ferie (tasto F)">F <small>ferie</small></button>
           <button class="tool cell-M" data-tool="M" title="Malattia (tasto M)">M <small>malattia</small></button>
           <button class="tool cell-P" data-tool="P" title="Permesso Legge 104 (tasto P)">P <small>104</small></button>
@@ -115,6 +124,9 @@
 
         <div class="actions">
           <button id="btn-generate" class="primary" title="Riempie solo i turni scoperti, senza toccare quelli già inseriti">Proposta automatica</button>
+          <button id="btn-undo-m" class="mobile-only" title="Annulla l'ultima modifica">↶ <span class="sr">Annulla</span></button>
+          <button type="button" id="actions-more" class="more-btn" aria-expanded="false" aria-label="Altre azioni">☰ <small>Altro</small></button>
+          <div class="more-actions" id="more-actions">
           <button id="btn-regenerate" title="Ricalcola solo i turni inseriti dalla proposta automatica (non quelli scritti a mano né i bloccati)">Rifai proposta</button>
           <button id="btn-clear-auto" title="Cancella solo i turni inseriti dalla proposta automatica (in corsivo); restano quelli scritti a mano e i bloccati">Cancella automatici</button>
           <button id="btn-lock-month" title="Blocca o sblocca tutte le caselle del mese">🔒 Blocca mese</button>
@@ -122,6 +134,7 @@
           <button id="btn-clear-month" class="danger" title="Cancella tutto il mese, anche i turni scritti a mano, tranne le caselle bloccate">Reset completo</button>
           <button id="btn-print">Stampa</button>
           <button id="btn-excel" title="Scarica il tabellone turni in Excel (settimane che iniziano con un lunedì del mese)">Esporta Excel</button>
+          </div>
         </div>
       </div>
 
@@ -316,16 +329,16 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 2.4 (massimo giorni di fila)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 2.5 (anche da cellulare)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/config.js?v=2.4"></script>
-  <script src="js/vendor/supabase.min.js?v=2.4"></script>
-  <script src="js/rules.js?v=2.4"></script>
-  <script src="js/logo.js?v=2.4"></script>
-  <script src="js/export-xlsx.js?v=2.4"></script>
-  <script src="js/auth.js?v=2.4"></script>
-  <script src="js/app.js?v=2.4"></script>
+  <script src="js/config.js?v=2.5"></script>
+  <script src="js/vendor/supabase.min.js?v=2.5"></script>
+  <script src="js/rules.js?v=2.5"></script>
+  <script src="js/logo.js?v=2.5"></script>
+  <script src="js/export-xlsx.js?v=2.5"></script>
+  <script src="js/auth.js?v=2.5"></script>
+  <script src="js/app.js?v=2.5"></script>
 </body>
 </html>

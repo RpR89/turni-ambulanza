@@ -52,6 +52,9 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - almeno **11 ore** di riposo tra la fine di un turno e l'inizio del successivo.
     Il controllo vale anche a cavallo tra due mesi.
     Con i turni predefiniti non sono ammessi una `N` seguita da una `G` il giorno dopo, né `G` e `N` nello stesso giorno.
+  - al massimo **6 giorni di lavoro di fila**, contando anche il giorno dello **smonto notte**
+    (es. `G G N N` occupa 5 giorni: dal primo `G` al mattino dopo l'ultima `N`). Vale anche a cavallo tra due mesi
+    e il numero si cambia in *Impostazioni*. Ferie, riposi e formazione interrompono la serie.
   - **almeno un autista soccorritore** in ogni turno di ogni ambulanza: ogni dipendente è *Autista soccorritore*
     (con patente) oppure *Soccorritore* (senza patente). Gli autisti sono segnati con una **A** accanto al nome.
   - **niente notte il giorno prima di un corso**: con la formazione (`C`) il giorno X,

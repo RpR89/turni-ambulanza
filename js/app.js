@@ -1038,6 +1038,7 @@
     f.tabelloneTitle.value = state.settings.tabelloneTitle || window.ExportXlsx.DEFAULT_TITLE;
     f.minDriversPerShift.value = state.settings.minDriversPerShift;
     f.maxSameInRow.value = state.settings.maxSameInRow;
+    f.maxConsecutiveDays.value = state.settings.maxConsecutiveDays;
     f.maxWeekendsPerMonth.value = state.settings.maxWeekendsPerMonth;
   }
 
@@ -1056,6 +1057,8 @@
         ? +f.perm104PerMonth.value : R.DEFAULT_SETTINGS.perm104PerMonth;
       state.settings.minDriversPerShift = f.minDriversPerShift.value !== '' && +f.minDriversPerShift.value >= 0
         ? +f.minDriversPerShift.value : R.DEFAULT_SETTINGS.minDriversPerShift;
+      state.settings.maxConsecutiveDays = +f.maxConsecutiveDays.value >= 1
+        ? +f.maxConsecutiveDays.value : R.DEFAULT_SETTINGS.maxConsecutiveDays;
       state.settings.maxSameInRow = +f.maxSameInRow.value >= 1 ? +f.maxSameInRow.value : R.DEFAULT_SETTINGS.maxSameInRow;
       state.settings.maxWeekendsPerMonth = f.maxWeekendsPerMonth.value !== '' && +f.maxWeekendsPerMonth.value >= 0
         ? +f.maxWeekendsPerMonth.value : R.DEFAULT_SETTINGS.maxWeekendsPerMonth;

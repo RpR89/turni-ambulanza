@@ -55,7 +55,8 @@
     perm104PerMonth: 3,
     minDriversPerShift: 1,
     maxSameInRow: 2,
-    maxWeekendsPerMonth: 2
+    maxWeekendsPerMonth: 2,
+    maxConsecutiveDays: 6
   };
 
   // Qualifiche: l'autista soccorritore ha la patente per guidare l'ambulanza.
@@ -426,13 +427,33 @@
     return out.sort(function (a, b) { return a.start - b.start; });
   }
 
+  // Giorno di lavoro: inizia un turno oppure si smonta una notte iniziata il giorno prima.
+  function workedDay(state, empId, key) {
+    if (hasShiftOn(state, empId, key)) return true;
+    var prev = addDays(key, -1), midnight = dayNumber(key) * 24;
+    return shiftIdsOn(state, empId, prev).some(function (id) { return shiftSpan(state, prev, id).end > midnight; });
+  }
+
+  // Giorni di lavoro di fila (smonto compreso) se il dipendente facesse anche il turno `shiftId` il giorno `key`.
+  function runWith(state, empId, key, shiftId) {
+    var span = shiftSpan(state, key, shiftId);
+    var from = dayNumber(key);
+    var to = span.end > (from + 1) * 24 ? from + 1 : from;   // la notte occupa anche il giorno dello smonto
+    var limit = 31;
+    while (limit-- && workedDay(state, empId, keyFromDayNumber(from - 1))) from--;
+    limit = 31;
+    while (limit-- && workedDay(state, empId, keyFromDayNumber(to + 1))) to++;
+    return { from: keyFromDayNumber(from), to: keyFromDayNumber(to), days: to - from + 1 };
+  }
+
   function settingsOf(state) {
     return {
       maxWeeklyHours: settingNum(state, 'maxWeeklyHours'),
       maxDailyHours: settingNum(state, 'maxDailyHours'),
       minRestHours: settingNum(state, 'minRestHours'),
       crewSize: settingNum(state, 'crewSize'),
-      minDrivers: settingNum(state, 'minDriversPerShift')
+      minDrivers: settingNum(state, 'minDriversPerShift'),
+      maxConsecutive: settingNum(state, 'maxConsecutiveDays')
     };
   }
 
@@ -465,6 +486,14 @@
     var day = round1(workHoursOn(state, empId, key) - already + s.hours);
     if (day > cfg.maxDailyHours) {
       reasons.push(day + ' h il ' + key + ' (massimo ' + cfg.maxDailyHours + ' h al giorno)');
+    }
+
+    if (cfg.maxConsecutive > 0) {
+      var run = runWith(state, empId, key, shiftId);
+      if (run.days > cfg.maxConsecutive) {
+        reasons.push(run.days + ' giorni di lavoro di fila dal ' + run.from + ' al ' + run.to +
+          ', smonto notte compreso (massimo ' + cfg.maxConsecutive + ')');
+      }
     }
 
     var monday = weekStart(key);
@@ -528,6 +557,26 @@
           });
         }
       });
+
+      // Massimo di giorni di lavoro di fila, contando anche il giorno dello smonto notte.
+      if (cfg.maxConsecutive > 0) {
+        var work = [];
+        var flushWork = function () {
+          if (work.length > cfg.maxConsecutive && work.some(function (k) { return k >= first && k <= last; })) {
+            issues.push({
+              level: 'error', type: 'consecutive', empId: emp.id, dates: work.slice(),
+              message: work.length + ' giorni di lavoro di fila dal ' + work[0] + ' al ' + work[work.length - 1] +
+                ', smonto notte compreso (massimo ' + cfg.maxConsecutive + ')'
+            });
+          }
+          work = [];
+        };
+        for (var wn = dayNumber(first) - 14; wn <= dayNumber(last) + 14; wn++) {
+          var wk = keyFromDayNumber(wn);
+          if (workedDay(state, emp.id, wk)) work.push(wk); else flushWork();
+        }
+        flushWork();
+      }
 
       // Da evitare: più di N giorni (o notti) di fila, anche a cavallo dei mesi.
       var maxRow = settingNum(state, 'maxSameInRow');
@@ -998,6 +1047,7 @@
     weekendsWorked: weekendsWorked,
     softBlockers: softBlockers,
     weekShiftCount: weekShiftCount,
+    workedDay: workedDay,
     generateMonth: generateMonth
   };
 

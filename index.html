@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turni Ambulanza</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%276%27 y=%271%27 width=%274%27 height=%2714%27 fill=%27%23c62828%27/%3E%3Crect x=%271%27 y=%276%27 width=%2714%27 height=%274%27 fill=%27%23c62828%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=2.3">
+  <link rel="stylesheet" href="css/style.css?v=2.4">
 </head>
 <body>
   <header class="topbar no-print">
@@ -268,6 +268,7 @@
           <label>Riposo minimo tra due turni (ore) <input type="number" name="minRestHours" min="0" step="1"></label>
           <label>Persone richieste per ogni turno <input type="number" name="crewSize" min="0" step="1"></label>
           <label>Massimo ore al giorno <input type="number" name="maxDailyHours" min="1" step="0.5"></label>
+          <label>Massimo giorni di lavoro di fila (smonto notte compreso) <input type="number" name="maxConsecutiveDays" min="1" step="1"></label>
           <label>Autisti soccorritori minimi per turno <input type="number" name="minDriversPerShift" min="0" step="1"></label>
           <label>Massimo turni uguali di fila (preferenza) <input type="number" name="maxSameInRow" min="1" step="1"></label>
           <label>Massimo weekend al mese (preferenza) <input type="number" name="maxWeekendsPerMonth" min="0" step="1"></label>
@@ -315,16 +316,16 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 2.3 (tabelloni sovrapposti)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 2.4 (massimo giorni di fila)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/config.js?v=2.3"></script>
-  <script src="js/vendor/supabase.min.js?v=2.3"></script>
-  <script src="js/rules.js?v=2.3"></script>
-  <script src="js/logo.js?v=2.3"></script>
-  <script src="js/export-xlsx.js?v=2.3"></script>
-  <script src="js/auth.js?v=2.3"></script>
-  <script src="js/app.js?v=2.3"></script>
+  <script src="js/config.js?v=2.4"></script>
+  <script src="js/vendor/supabase.min.js?v=2.4"></script>
+  <script src="js/rules.js?v=2.4"></script>
+  <script src="js/logo.js?v=2.4"></script>
+  <script src="js/export-xlsx.js?v=2.4"></script>
+  <script src="js/auth.js?v=2.4"></script>
+  <script src="js/app.js?v=2.4"></script>
 </body>
 </html>

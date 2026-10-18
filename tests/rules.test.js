@@ -447,3 +447,36 @@ test('proposta con due ambulanze: tutti i turni coperti senza errori', () => {
   // tutti i turni nuovi risultano automatici
   assert.ok(Object.values(res.auto).some(m => Object.keys(m).length));
 });
+
+test('massimo 6 giorni di lavoro di fila, contando lo smonto notte', () => {
+  // G G N N: lavora dal 12 al 16 (il 16 smonta la notte del 15)
+  const base = { '2026-10-12': 'G', '2026-10-13': 'G', '2026-10-14': 'N', '2026-10-15': 'N' };
+  const s = makeState([FT], { a: Object.assign({}, base) }, { maxWeeklyHours: 100 });
+  assert.equal(R.workedDay(s, 'a', '2026-10-16'), true);   // giorno dello smonto
+  assert.equal(R.workedDay(s, 'a', '2026-10-17'), false);
+  assert.deepEqual(R.blockers(s, 'a', '2026-10-17', 'G'), []); // 6° giorno: ammesso
+  s.assignments.a['2026-10-17'] = 'G';
+  const b = R.blockers(s, 'a', '2026-10-18', 'G');            // sarebbe il 7°
+  assert.equal(b.length, 1);
+  assert.match(b[0], /7 giorni di lavoro di fila/);
+
+  // una notte come 6° turno porta lo smonto al 7° giorno
+  const s2 = makeState([FT], { a: { '2026-10-12': 'G', '2026-10-13': 'G', '2026-10-14': 'G', '2026-10-15': 'G', '2026-10-16': 'G' } },
+    { maxWeeklyHours: 100 });
+  assert.deepEqual(R.blockers(s2, 'a', '2026-10-17', 'G'), []);
+  assert.equal(R.blockers(s2, 'a', '2026-10-17', 'N').length, 1);
+  // anche inserendo un turno che unisce due blocchi
+  const s3 = makeState([FT], { a: { '2026-10-12': 'G', '2026-10-13': 'G', '2026-10-14': 'G', '2026-10-16': 'G', '2026-10-17': 'G', '2026-10-18': 'G' } },
+    { maxWeeklyHours: 100 });
+  assert.equal(R.blockers(s3, 'a', '2026-10-15', 'G').length, 1);
+
+  // nel controllo del mese: errore sui 7 giorni
+  s2.assignments.a['2026-10-17'] = 'N';
+  const errs = R.validateMonth(s2, 2026, 10).filter(i => i.type === 'consecutive');
+  assert.equal(errs.length, 1);
+  assert.equal(errs[0].dates.length, 7);
+  assert.equal(errs[0].dates[6], '2026-10-18');
+  // il limite si cambia nelle impostazioni
+  s2.settings.maxConsecutiveDays = 7;
+  assert.equal(R.validateMonth(s2, 2026, 10).filter(i => i.type === 'consecutive').length, 0);
+});

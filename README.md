@@ -140,9 +140,22 @@ Il sito è pubblicato da Vercel: a ogni modifica sul ramo di produzione viene ag
 e per ogni pull request Vercel crea un'anteprima da provare prima di unirla.
 Non serve nessuna build: Vercel pubblica i file così come sono.
 
-> I nomi e i turni non finiscono online: restano salvati solo nel browser di chi usa l'app.
-> Il link pubblica soltanto il programma. Non caricare nel repository i file di backup
+> Con l'accesso utenti attivo (Supabase) i turni sono salvati online, separati per unità; senza, restano
+> solo nel browser di chi usa l'app. Non caricare nel repository i file di backup
 > (`turni-backup-….json`), perché contengono i dati veri.
+
+### Dal cellulare
+
+Si apre lo stesso link dal browser del telefono; la pagina si adatta allo schermo:
+
+- **menu ☰** in alto con le schede (Turni, Dipendenti, Impostazioni, Amministrazione) e l'utente;
+- **barra in basso** sempre a portata di pollice con i turni, `F` `M` `P` `R` `C`, cancella e blocca;
+- **＋ aggiungi turno**: quando è attivo, toccando una casella il turno scelto si aggiunge a quelli del giorno
+  (o si toglie), come Maiusc+clic sul computer;
+- in alto restano *Proposta automatica* e *Annulla* (↶); le altre azioni sono nel menu **☰ Altro**;
+- nel tabellone i nomi sono abbreviati (cognome e iniziale) per vedere più giorni; si scorre di lato;
+- **icona sulla schermata Home**: su iPhone *Condividi → Aggiungi alla schermata Home*, su Android
+  *⋮ → Aggiungi a schermata Home* (o *Installa app*). Si apre a tutto schermo come un'app.
 
 ## Sviluppo
 

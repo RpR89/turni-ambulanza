@@ -552,3 +552,16 @@ body.staff-mode .tabs, body.staff-mode main > .panel { display: none !important;
 /* Dipendenti sospesi */
 #emp-table tr.suspended td, #emp-table tr.suspended input, #emp-table tr.suspended select { color: var(--muted); }
 #emp-table tr.suspended { background: var(--bg); }
+
+/* ---------- Finestra di rifiuto delle richieste ---------- */
+
+.dialog { width: min(480px, calc(100% - 24px)); padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text); box-shadow: 0 12px 36px rgba(0, 0, 0, .25); }
+.dialog::backdrop { background: rgba(0, 0, 0, .35); }
+.dialog h3 { margin: 0 0 8px; }
+.dialog ul { margin: 6px 0; padding-left: 20px; }
+.dialog .check { margin: 12px 0 6px; font-weight: 600; }
+.dialog .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.dialog textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit;
+  background: var(--surface); color: var(--text); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

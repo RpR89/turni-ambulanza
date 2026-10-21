@@ -30,6 +30,10 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     successive i dipendenti le vedono solo con **Aggiorna pubblicazione** (accanto al mese compare
     *modifiche non pubblicate*); **Ritira pubblicazione** la toglie;
   - nei turni pubblicati malattia e permessi 104 compaiono solo come **A** (assente), senza il motivo;
+  - **mail di avviso**: quando il referente (o il vice) pubblica il mese, tutti i dipendenti registrati e attivi
+    dell'unità ricevono una mail; quando aggiorna la pubblicazione l'app chiede se avvisarli di nuovo. La mail parte
+    dalla casella dell'app con il nome di chi pubblica come mittente, e "Rispondi" arriva a lui
+    (configurazione in [docs/SETUP-SUPABASE.md](docs/SETUP-SUPABASE.md));
   - finché il mese non è pubblicato il dipendente vede il **tabellone delle richieste** dell'unità (tutte le
     ambulanze) con le richieste dei colleghi, e tocca i giorni della sua riga per chiedere un **riposo (R)**
     — al massimo **4 al mese** — o un **permesso 104**, se ne ha diritto, nel limite mensile dei permessi.
@@ -40,7 +44,9 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - nel tabellone del referente le richieste entrano da sole come `R` / `104` **sottolineate** (anche al posto di
     turni messi dalla proposta automatica), e la proposta automatica le rispetta. Se in quel giorno c'è già un turno
     scritto a mano, la richiesta resta in sospeso e compare nei *Controlli* con **Rifiuta la richiesta**; se il
-    referente cambia a mano una casella che veniva da una richiesta, l'app chiede se rifiutarla.
+    referente cambia a mano una casella che veniva da una richiesta, l'app chiede se rifiutarla. Nella finestra di
+    rifiuto si sceglie **"Devo informare il dipendente?"**: se sì, si scrive la motivazione e il dipendente riceve una
+    mail con i giorni non accolti e il motivo.
 
 - **Ambulanze e turni** (scheda *Impostazioni*): ogni ambulanza ha un **codice di 5 cifre** e i suoi turni,
   ciascuno con nome (es. `GIORNO`), sigla (es. `G`), **ora di inizio e di fine** e **giorni della settimana**
@@ -202,6 +208,8 @@ npm start    # server locale su http://localhost:8080
 - `js/auth.js`, `js/config.js`: accesso, registrazione, amministrazione e salvataggio online (Supabase);
   `js/vendor/supabase.min.js` è [supabase-js](https://github.com/supabase/supabase-js) 2.45.4 (licenza MIT)
 - `api/admin-invite.js`: funzione Vercel per l'inserimento manuale degli utenti (usa la chiave service_role)
+- `api/notify.js`: funzione Vercel per le mail ai dipendenti (pubblicazione, richieste non accolte), con
+  [nodemailer](https://nodemailer.com) (licenza MIT-0)
 - `supabase/schema.sql`: tabelle e regole di sicurezza del database; `supabase/test/` le prove su un Postgres locale:
   `psql -f supabase/test/mock_auth.sql -f supabase/schema.sql -f supabase/test/schema_test.sql`
 - `js/export-xlsx.js`: tabellone in Excel; `js/vendor/exceljs.min.js` è [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (licenza MIT)

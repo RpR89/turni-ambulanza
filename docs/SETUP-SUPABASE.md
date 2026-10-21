@@ -61,6 +61,24 @@ In Vercel apri il progetto **turni-ambulanza → Settings → Environment Variab
 
 Poi da **Deployments** fai **Redeploy** dell'ultima pubblicazione, perché le variabili vengano lette.
 
+### Mail ai dipendenti (pubblicazione dei turni e richieste non accolte)
+
+Le mail ai dipendenti partono da un'unica casella dell'app (per esempio `turni@critn.it`, la stessa che puoi usare
+in Supabase per le mail di conferma). Il mittente mostra il nome di chi pubblica o rifiuta, per esempio
+*"Anna Verdi (referente) – Turni Ambulanza"*, e con "Rispondi" la risposta arriva direttamente a lui.
+Aggiungi in Vercel, sempre in **Settings → Environment Variables**:
+
+| Nome | Valore |
+|---|---|
+| `SMTP_HOST` | il server di posta in uscita (es. `smtp.office365.com`, `smtp.gmail.com`, `smtp-relay.brevo.com`) |
+| `SMTP_PORT` | `587` (oppure `465` se il fornitore usa SSL) |
+| `SMTP_USER` | l'utente della casella (di solito l'indirizzo, es. `turni@critn.it`) |
+| `SMTP_PASS` | la password della casella o la "password per le app" |
+| `MAIL_FROM` | l'indirizzo mittente, es. `turni@critn.it` |
+
+Poi **Redeploy**. Senza queste variabili l'app funziona lo stesso: pubblicazione e rifiuti vanno a buon fine e un
+messaggio avvisa che le mail non sono partite.
+
 ## 6. Diventa amministratore
 
 1. Apri il sito e **registrati** con il tuo indirizzo `@critn.it` (per la prima registrazione scegli

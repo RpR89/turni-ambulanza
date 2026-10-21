@@ -310,6 +310,21 @@
             })).then(function () { renderAccounts(); return list.length; });
           });
       },
+      // Avvisi via mail ai dipendenti (pubblicazione, richieste non accolte): funzione api/notify.
+      notify: function (payload) {
+        return sb.auth.getSession().then(function (s) {
+          return fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s.data.session && s.data.session.access_token) },
+            body: JSON.stringify(Object.assign({ unit_id: unitId }, payload))
+          });
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (j) {
+            if (!res.ok) throw new Error(j.error || 'invio non riuscito');
+            return j;
+          });
+        });
+      },
       rejectRequests: function (ids) {
         return sb.from('requests').delete().in('id', ids).then(function (r) {
           if (r.error) throw r.error;

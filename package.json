@@ -6,5 +6,8 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "start": "npx --yes http-server -p 8080 -c-1 ."
+  },
+  "dependencies": {
+    "nodemailer": "6.10.1"
   }
 }

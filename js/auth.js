@@ -162,17 +162,16 @@
           emailRedirectTo: siteUrl,
           data: {
             first_name: f.first_name.value.trim(), last_name: f.last_name.value.trim(),
-            unit_id: f.unit.value, role: f.role.value, privacy_accepted_at: new Date().toISOString()
+            unit_id: f.unit.value, role: 'dipendente', privacy_accepted_at: new Date().toISOString()
           }
         }
       }).then(function (r) {
         busy(f, false);
         if (r.error) return setAuthMessage(translateError(r.error), true);
-        var staff = f.role.value === 'dipendente';
         f.reset();
         showAuth('login', 'Quasi fatto: ti abbiamo mandato una mail a ' + email +
-          '. Apri il link per confermare l\'indirizzo. Poi ' + (staff ? 'il referente della tua unità' : 'l\'amministratore') +
-          ' deve approvare il tuo account: quando l\'ha fatto potrai accedere con la tua password.');
+          '. Apri il link per confermare l\'indirizzo. Poi il referente della tua unità deve approvare il tuo account: ' +
+          'quando l\'ha fatto potrai accedere con la tua password.');
       });
     });
 
@@ -656,6 +655,7 @@
       sb.from('profiles').update(patch).eq('id', tr.getAttribute('data-user')).then(function (r) {
         if (r.error) { toast(translateError(r.error), true); return loadUsers(); }
         toast('Utente aggiornato.');
+        if (f === 'role') loadUsers();
       });
     });
 

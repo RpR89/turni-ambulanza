@@ -41,12 +41,16 @@ reset role;
 reset request.jwt.claim.sub;
 
 -- amministratore impostato dall'editor SQL (nessun utente collegato)
-update public.profiles set is_admin = true, active = true where email = 'capo@critn.it';
+update public.profiles set is_admin = true, active = true, role = 'referente' where email = 'capo@critn.it';
 
 -- l'amministratore approva i referenti e nomina un altro amministratore
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
-update public.profiles set active = true where email in ('mario.rossi@critn.it', 'anna.verdi@critn.it');
+-- chi si registra è sempre dipendente, anche se il modulo dice altro: il ruolo lo dà l'amministratore
+select 'ruoli alla registrazione', string_agg(distinct role, ',') from public.profiles
+  where email <> 'capo@critn.it';                                                   -- dipendente
+update public.profiles set active = true, role = 'vice_referente' where email = 'mario.rossi@critn.it';
+update public.profiles set active = true, role = 'referente' where email = 'anna.verdi@critn.it';
 update public.profiles set is_admin = true where email = 'anna.verdi@critn.it';
 reset role;
 reset request.jwt.claim.sub;

@@ -9,12 +9,12 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 ## Cosa fa
 
 - **Accesso utenti** (con il back end attivo):
-  - registrazione con nome, cognome, email, **unità di appartenenza** e **ruolo** (dipendente, referente o vice referente),
+  - registrazione con nome, cognome, email e **unità di appartenenza**: chi si registra è sempre un **dipendente**
+    (referenti e vice li nomina l'amministratore, con l'invito o cambiando il ruolo);
     accettando l'informativa privacy; solo indirizzi **@critn.it** (controllo anche nel database) e conferma via mail;
   - accesso con email e password, recupero della password via mail;
-  - chi si registra da solo resta **in attesa di approvazione**: referenti e vice li approva un amministratore
-    (scheda *Amministrazione*, pulsante **Approva**), i dipendenti il referente della loro unità; chi viene
-    invitato dall'amministratore è già approvato;
+  - chi si registra resta **in attesa di approvazione** del referente della sua unità; chi viene invitato
+    dall'amministratore (con il ruolo scelto) è già approvato;
   - ogni utente vede e modifica solo i turni della **propria unità**, salvati online e condivisi tra
     referente e vice referente; se due persone salvano insieme l'app lo segnala e chiede quale versione tenere;
   - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti (prima quelli da approvare)
@@ -22,7 +22,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     inserimento manuale di utenti con mail di invito;
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 - **Accesso dei dipendenti** (con il back end attivo):
-  - il dipendente si registra con ruolo *Dipendente*; dopo la conferma della mail resta **in attesa** finché il
+  - il dipendente si registra dal sito; dopo la conferma della mail resta **in attesa** finché il
     referente (o il vice) della sua unità non lo approva nella scheda *Dipendenti → Account dei dipendenti*,
     scegliendo la sua riga del tabellone (proposta in automatico se nome e cognome coincidono);
   - il dipendente **non vede i turni in lavorazione**: per ogni mese vede i turni solo dopo che il referente preme

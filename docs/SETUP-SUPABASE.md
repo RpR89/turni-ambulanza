@@ -70,13 +70,14 @@ Poi da **Deployments** fai **Redeploy** dell'ultima pubblicazione, perché le va
 3. In Supabase, **SQL Editor**, esegui (con il tuo indirizzo):
 
    ```sql
-   update public.profiles set is_admin = true, active = true where email = 'nome.cognome@critn.it';
+   update public.profiles set is_admin = true, active = true, role = 'referente' where email = 'nome.cognome@critn.it';
    ```
 
 4. Rientra nel sito: compare la scheda **Amministrazione**, dove gestisci unità e utenti.
-   Da lì approvi i referenti e i vice che si registrano (restano in attesa finché non premi **Approva**) e,
-   con la casella **Amministratore**, nomini altri amministratori. Chi inviti con *Aggiungi un utente* è già approvato.
-   I dipendenti invece li approva il referente della loro unità, nella scheda *Dipendenti*.
+   Chi si registra dal sito è sempre un **dipendente** (lo approva il referente della sua unità, scheda *Dipendenti*).
+   Referenti e vice li crei tu: con *Aggiungi un utente* (invito per mail, già attivo) oppure cambiando il ruolo di
+   un utente registrato nella tabella *Utenti* e premendo **Approva**. Con la casella **Amministratore** nomini altri
+   amministratori.
 
 ## 7. Aggiornare il database a una nuova versione
 

@@ -45,7 +45,7 @@ test('invito: l\'amministratore inserisce un utente @critn.it', () => withSupaba
   // l'invitato è attivo subito (chi si registra da solo invece resta in attesa)
   const act = calls.find(c => c.opts.method === 'PATCH');
   assert.match(act.url, /\/rest\/v1\/profiles\?id=eq\.new$/);
-  assert.deepEqual(JSON.parse(act.opts.body), { active: true });
+  assert.deepEqual(JSON.parse(act.opts.body), { active: true, role: 'referente' });
 }));
 
 test('invito: rifiuta domini diversi da @critn.it e dati mancanti', () => withSupabase({}, async (calls) => {

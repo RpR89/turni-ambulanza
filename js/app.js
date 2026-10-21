@@ -548,13 +548,73 @@
     });
   }
 
-  function rejectRequests(ids) {
+  // Rifiuta le richieste; con `mail` ({ reason }) avvisa ogni dipendente con un'unica mail per i suoi giorni.
+  function rejectRequests(ids, mail) {
+    var rejected = (online.requests || []).filter(function (r) { return ids.indexOf(r.id) >= 0; });
     online.rejectRequests(ids).then(function (list) {
       online.requests = list;
       applyRequests(list, true);
       renderMonth();
-      toast(ids.length === 1 ? 'Richiesta rifiutata.' : ids.length + ' richieste rifiutate.');
+      var msg = ids.length === 1 ? 'Richiesta rifiutata' : ids.length + ' richieste rifiutate';
+      if (!mail) return toast(msg + '.');
+      var groups = {};
+      rejected.forEach(function (r) {
+        var k = r.employee_id + '|' + r.kind;
+        (groups[k] = groups[k] || { employee_id: r.employee_id, kind: r.kind, days: [] }).days.push(r.day);
+      });
+      return Promise.all(Object.keys(groups).map(function (k) {
+        return online.notify(Object.assign({ type: 'rejected', reason: mail.reason }, groups[k]));
+      })).then(function (res) {
+        var sent = res.reduce(function (t, r) { return t + (r.sent || 0); }, 0);
+        toast(msg + (sent ? ': il dipendente è stato avvisato via mail.' : ': nessun account registrato da avvisare.'), !sent);
+      }).catch(function (e) { toast(msg + ', ma la mail non è partita: ' + (e.message || e), true); });
     }).catch(function (e) { toast('Richiesta non rifiutata: ' + (e.message || e), true); });
+  }
+
+  // Finestra di rifiuto: conferma, "devo informare il dipendente?" e motivazione.
+  // `fromEdit`: la casella è stata cambiata a mano (annullando la richiesta resta in sospeso).
+  function askReject(ids, fromEdit) {
+    var list = (online.requests || []).filter(function (r) { return ids.indexOf(r.id) >= 0; });
+    if (!list.length) return;
+    var dlg = $('#reject-dialog'), f = dlg.querySelector('form');
+    var names = {};
+    list.forEach(function (r) {
+      var n = (empById(r.employee_id) || {}).name || '?';
+      (names[n] = names[n] || []).push(KIND_TEXT[r.kind] + ' del ' + fmtDate(r.day));
+    });
+    $('#rej-text').innerHTML = (fromEdit ? 'Hai cambiato a mano ' + (list.length === 1 ? 'una casella che era una richiesta' :
+      'caselle che erano richieste') + ' di un dipendente. ' : '') + 'Stai rifiutando:<ul>' +
+      Object.keys(names).map(function (n) { return '<li><b>' + esc(n) + '</b>: ' + esc(names[n].join(', ')) + '</li>'; }).join('') +
+      '</ul>La richiesta viene cancellata e il dipendente non la vede più.';
+    f.notify.checked = false;
+    f.reason.value = '';
+    $('#rej-reason-box').hidden = true;
+    $('#rej-keep').textContent = fromEdit ? 'Lascia in sospeso' : 'Annulla';
+    dlg.returnValue = '';
+    dlg.onclose = function () {
+      if (dlg.returnValue === 'ok') {
+        rejectRequests(ids, f.notify.checked ? { reason: f.reason.value.trim() } : null);
+      } else if (fromEdit) {
+        applyRequests(online.requests, true);
+        renderMonth();
+      }
+    };
+    dlg.showModal();
+  }
+
+  function initRejectDialog() {
+    var dlg = $('#reject-dialog'), f = dlg.querySelector('form');
+    f.notify.addEventListener('change', function () {
+      $('#rej-reason-box').hidden = !f.notify.checked;
+      if (f.notify.checked) f.reason.focus();
+    });
+    $('#rej-ok').addEventListener('click', function (ev) {
+      if (f.notify.checked && !f.reason.value.trim()) {
+        ev.preventDefault();
+        toast('Scrivi la motivazione da mandare al dipendente.');
+        f.reason.focus();
+      }
+    });
   }
 
   // Il referente ha cambiato a mano caselle che venivano da una richiesta: le rifiuta?
@@ -569,16 +629,7 @@
         if (r.employee_id === t.empId && r.day === t.key) ids.push(r.id);
       });
     });
-    if (!ids.length) return;
-    if (confirm('Hai cambiato ' + (ids.length === 1 ? 'una casella che era una richiesta' : ids.length +
-      ' caselle che erano richieste') + ' di riposo o 104 di un dipendente.\n\nOK = rifiuta ' +
-      (ids.length === 1 ? 'la richiesta' : 'le richieste') + ' (viene cancellata, il dipendente non la vede più)\n' +
-      'Annulla = resta in sospeso, segnalata nei Controlli')) {
-      rejectRequests(ids);
-    } else {
-      applyRequests(online.requests, true);
-      renderMonth();
-    }
+    if (ids.length) askReject(ids, true);
   }
 
   function fmtDateTime(iso) {
@@ -612,13 +663,24 @@
     var key = O.monthKey(view.y, view.m), title = MONTHS[view.m - 1] + ' ' + view.y;
     var errors = R.validateMonth(state, view.y, view.m).filter(function (i) { return i.level === 'error'; }).length;
     if (!confirm((online.published[key] ? 'Aggiornare i turni pubblicati di ' : 'Pubblicare i turni di ') + title + '?\n' +
-      'Tutti i dipendenti dell\'unità li vedranno così come sono adesso (malattia e 104 compaiono come "assente").' +
+      'Tutti i dipendenti dell\'unità li vedranno così come sono adesso (malattia e 104 compaiono come "assente")' +
+      (online.published[key] ? '.' : ' e riceveranno una mail di avviso.') +
       (errors ? '\n\nATTENZIONE: nel mese ci sono ancora ' + errors + ' errori.' : '') +
       '\nDopo la pubblicazione i dipendenti non possono più cambiare le richieste di questo mese.')) return;
+    var update = !!online.published[key];
     online.publish(key, O.buildSnapshot(state, view.y, view.m)).then(function (row) {
       online.published[key] = row;
       renderPublish();
-      toast('Turni di ' + title + ' pubblicati.');
+      // La mail di avviso parte solo alla prima pubblicazione del mese, non con "Aggiorna pubblicazione".
+      if (update) return toast('Turni di ' + title + ' aggiornati.');
+      toast('Turni di ' + title + ' pubblicati: invio le mail ai dipendenti…');
+      return online.notify({ type: 'published', month: key }).then(function (r) {
+        toast('Turni di ' + title + ' pubblicati. ' +
+          (r.sent ? 'Mail di avviso mandata a ' + r.sent + (r.sent === 1 ? ' dipendente' : ' dipendenti') +
+            (r.failed ? ' (' + r.failed + ' non riuscite)' : '') + '.' : 'Nessun dipendente registrato da avvisare.'), !!r.failed);
+      }, function (e) {
+        toast('Turni di ' + title + ' pubblicati, ma le mail non sono partite: ' + (e.message || e), true);
+      });
     }).catch(function (e) { toast('Pubblicazione non riuscita: ' + (e.message || e), true); });
   }
 
@@ -878,8 +940,7 @@
       var rej = ev.target.closest('[data-reject]');
       if (rej) {
         var item = requestIssues().filter(function (i) { return String(i.requestId) === rej.getAttribute('data-reject'); })[0];
-        if (item && confirm('Rifiutare la richiesta di ' + (empById(item.empId) || {}).name + ' per il ' + fmtDate(item.dates[0]) +
-          '?\nViene cancellata: il dipendente non la vedrà più.')) rejectRequests([item.requestId]);
+        if (item) askReject([item.requestId], false);
         return;
       }
       var li = ev.target.closest('li.err');
@@ -1624,6 +1685,7 @@
 
     initGridEvents();
     initVolunteers();
+    initRejectDialog();
     initEmployees();
     initSettings();
     initAmbulances();

@@ -61,6 +61,38 @@ In Vercel apri il progetto **turni-ambulanza → Settings → Environment Variab
 
 Poi da **Deployments** fai **Redeploy** dell'ultima pubblicazione, perché le variabili vengano lette.
 
+### Mail ai dipendenti (pubblicazione dei turni e richieste non accolte)
+
+Le mail ai dipendenti partono da un'unica casella dell'app (per esempio `turni@critn.it`, la stessa che puoi usare
+in Supabase per le mail di conferma). Il mittente mostra il nome di chi pubblica o rifiuta, per esempio
+*"Anna Verdi (referente) – Turni Ambulanza"*, e con "Rispondi" la risposta arriva direttamente a lui.
+Aggiungi in Vercel, sempre in **Settings → Environment Variables**:
+
+| Nome | Valore |
+|---|---|
+| `SMTP_HOST` | il server di posta in uscita (es. `smtp.office365.com`, `smtp.gmail.com`, `smtp-relay.brevo.com`) |
+| `SMTP_PORT` | `587` (oppure `465` se il fornitore usa SSL) |
+| `SMTP_USER` | l'utente della casella (di solito l'indirizzo, es. `turni@critn.it`) |
+| `SMTP_PASS` | la password della casella o la "password per le app" |
+| `MAIL_FROM` | l'indirizzo mittente, es. `turni@critn.it` |
+
+Poi **Redeploy**. Senza queste variabili l'app funziona lo stesso: pubblicazione e rifiuti vanno a buon fine e un
+messaggio avvisa che le mail non sono partite.
+
+**Non hai una casella del comitato da usare?** Il servizio di posta incluso in Supabase non va bene: manda solo le
+mail di accesso (conferma, invito, password) e con limiti molto bassi. La strada più semplice e gratuita è un account
+Gmail dedicato all'app (es. `turni.cri.trento@gmail.com`):
+
+1. crea l'account e attiva la **verifica in due passaggi** (Account Google → Sicurezza);
+2. sempre in Sicurezza crea una **password per le app** (16 caratteri);
+3. su Vercel: `SMTP_HOST` = `smtp.gmail.com`, `SMTP_PORT` = `465`, `SMTP_USER` e `MAIL_FROM` = l'indirizzo Gmail,
+   `SMTP_PASS` = la password per le app (senza spazi).
+
+Gmail permette circa 500 mail al giorno, molto più del necessario. Il dipendente vede comunque come mittente il nome
+del referente, e "Rispondi" arriva al referente. La stessa casella puoi usarla anche in Supabase
+(*Authentication → Emails → SMTP Settings*) per le mail di conferma della registrazione, così non hai più i limiti
+del servizio incluso.
+
 ## 6. Diventa amministratore
 
 1. Apri il sito e **registrati** con il tuo indirizzo `@critn.it` (per la prima registrazione scegli

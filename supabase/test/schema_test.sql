@@ -103,4 +103,144 @@ exception when insufficient_privilege then raise notice 'OK profili negati ad an
 end $$;
 reset role;
 reset request.jwt.claim.sub;
+-- ===== dipendenti: registrazione, approvazione, richieste, pubblicazione =====
+-- Turni dell'unità Trento con due dipendenti (Luca ha la 104), salvati dall'amministratore.
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+select public.save_unit_data('22222222-2222-2222-2222-222222222222',
+  '{"employees":[{"id":"e1","name":"Bianchi Luca","role":"autista","has104":true},
+                 {"id":"e2","name":"Neri Sara","role":"soccorritore"}],
+    "settings":{"maxRestRequests":2,"requestDeadlineDay":15}}', 1);
+reset role;
+reset request.jwt.claim.sub;
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('aaaaaaaa-0000-0000-0000-000000000004', 'luca.bianchi@critn.it',
+   '{"first_name":"Luca","last_name":"Bianchi","unit_id":"22222222-2222-2222-2222-222222222222","role":"dipendente"}'),
+  ('aaaaaaaa-0000-0000-0000-000000000005', 'sara.neri@critn.it',
+   '{"first_name":"Sara","last_name":"Neri","unit_id":"22222222-2222-2222-2222-222222222222","role":"dipendente"}');
+select 'dipendente in attesa', role, active from public.profiles where email = 'luca.bianchi@critn.it'; -- dipendente | f
+
+-- in attesa: non vede nulla e non può fare richieste
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
+select 'luca in attesa vede roster', public.unit_roster('22222222-2222-2222-2222-222222222222') is null; -- t
+do $$ begin
+  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date, 'R');
+  raise exception 'ERRORE: richiesta da dipendente non approvato';
+exception when insufficient_privilege then raise notice 'OK dipendente non approvato bloccato';
+end $$;
+do $$ begin
+  update public.profiles set active = true, employee_id = 'e1' where id = auth.uid();
+  raise exception 'ERRORE: dipendente si è approvato da solo';
+exception when insufficient_privilege then raise notice 'OK auto-approvazione negata';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
+-- Anna (referente di Trento) vede e approva i dipendenti della sua unità
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000002';
+select 'anna vede profili unita', count(*) from public.profiles where role = 'dipendente';  -- 2
+select public.manage_employee_account('aaaaaaaa-0000-0000-0000-000000000004', 'e1', true);
+select public.manage_employee_account('aaaaaaaa-0000-0000-0000-000000000005', 'e2', true);
+do $$ begin
+  perform public.manage_employee_account('aaaaaaaa-0000-0000-0000-000000000005', 'e1', true);
+  raise exception 'ERRORE: stessa riga collegata a due account';
+exception when unique_violation then raise notice 'OK riga già collegata';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
+-- un referente di un'altra unità non può approvare
+update public.profiles set role = 'referente', unit_id = '11111111-1111-1111-1111-111111111111', active = true
+  where email = 'mario.rossi@critn.it';
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+do $$ begin
+  perform public.manage_employee_account('aaaaaaaa-0000-0000-0000-000000000005', 'e2', false);
+  raise exception 'ERRORE: referente di altra unità ha gestito un dipendente';
+exception when insufficient_privilege then raise notice 'OK altra unità non gestisce';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
+-- Luca approvato: vede il roster e le richieste, NON i turni in lavorazione
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
+select 'luca vede unit_data', count(*) from public.unit_data;                  -- 0
+select 'luca roster', jsonb_array_length(public.unit_roster('22222222-2222-2222-2222-222222222222') -> 'employees'),
+  public.unit_roster('22222222-2222-2222-2222-222222222222') ->> 'maxRestRequests'; -- 2 | 2
+do $$
+declare m date := (date_trunc('month', current_date) + interval '2 month')::date;
+begin
+  perform public.set_request(m, 'R');
+  perform public.set_request(m + 1, 'R');
+  perform public.set_request(m + 2, 'P');                 -- 104: ha diritto
+  begin
+    perform public.set_request(m + 3, 'R');
+    raise exception 'ERRORE: superato il massimo di riposi';
+  exception when check_violation then raise notice 'OK massimo riposi';
+  end;
+  perform public.set_request(m + 1, null);                -- ne toglie una
+  perform public.set_request(m + 3, 'R');                 -- e ne mette un'altra
+  begin
+    perform public.set_request(date_trunc('month', current_date)::date + 20, 'R');
+    raise exception 'ERRORE: accettata richiesta dopo il termine';
+  exception when check_violation then raise notice 'OK termine scaduto';
+  end;
+end $$;
+do $$ begin
+  insert into public.requests (unit_id, employee_id, day, kind)
+    values ('22222222-2222-2222-2222-222222222222', 'e2', current_date + 60, 'R');
+  raise exception 'ERRORE: inserimento diretto di una richiesta';
+exception when insufficient_privilege then raise notice 'OK inserimento diretto negato';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
+-- Sara: senza 104 non può chiederla; vede il permesso di Luca solo come "A"
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000005';
+do $$ begin
+  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 5, 'P');
+  raise exception 'ERRORE: 104 senza diritto';
+exception when check_violation then raise notice 'OK 104 solo con diritto';
+end $$;
+select 'sara vede richieste dirette', count(*) from public.requests;              -- 0 (solo le sue: nessuna)
+select 'sara vede richieste unita', string_agg(kind, '' order by day)
+  from public.unit_requests('22222222-2222-2222-2222-222222222222', current_date, current_date + 120); -- RAR
+reset role;
+reset request.jwt.claim.sub;
+
+-- Anna pubblica il mese: Luca vede la pubblicazione e non può più cambiare le richieste
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000002';
+select 'anna vede richieste', string_agg(kind, '' order by day) from public.requests;  -- RPR
+insert into public.published (unit_id, month, data, published_by)
+  values ('22222222-2222-2222-2222-222222222222', to_char(current_date + interval '2 month', 'YYYY-MM'),
+          '{"cells":{}}', auth.uid());
+reset role;
+reset request.jwt.claim.sub;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
+select 'luca vede pubblicati', count(*) from public.published;                    -- 1
+do $$ begin
+  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 10, 'R');
+  raise exception 'ERRORE: richiesta su mese pubblicato';
+exception when check_violation then raise notice 'OK mese pubblicato bloccato';
+end $$;
+do $$ begin
+  delete from public.published;
+  if found then raise exception 'ERRORE: dipendente ha cancellato la pubblicazione'; end if;
+  raise notice 'OK pubblicazione protetta';
+end $$;
+select 'luca vede ancora pubblicati', count(*) from public.published;             -- 1
+do $$ begin
+  perform public.save_unit_data('22222222-2222-2222-2222-222222222222', '{}', 2);
+  raise exception 'ERRORE: dipendente ha salvato i turni';
+exception when insufficient_privilege then raise notice 'OK dipendente non salva i turni';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
 select 'FINE OK';

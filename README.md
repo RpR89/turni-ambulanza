@@ -9,7 +9,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 ## Cosa fa
 
 - **Accesso utenti** (con il back end attivo):
-  - registrazione con nome, cognome, email, **unità di appartenenza** e **ruolo** (referente o vice referente),
+  - registrazione con nome, cognome, email, **unità di appartenenza** e **ruolo** (dipendente, referente o vice referente),
     accettando l'informativa privacy; solo indirizzi **@critn.it** (controllo anche nel database) e conferma via mail;
   - accesso con email e password, recupero della password via mail;
   - ogni utente vede e modifica solo i turni della **propria unità**, salvati online e condivisi tra
@@ -17,6 +17,26 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti con unità, ruolo,
     attivo/disattivo e amministratore, inserimento manuale di utenti con mail di invito;
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
+- **Accesso dei dipendenti** (con il back end attivo):
+  - il dipendente si registra con ruolo *Dipendente*; dopo la conferma della mail resta **in attesa** finché il
+    referente (o il vice) della sua unità non lo approva nella scheda *Dipendenti → Account dei dipendenti*,
+    scegliendo la sua riga del tabellone (proposta in automatico se nome e cognome coincidono);
+  - il dipendente **non vede i turni in lavorazione**: per ogni mese vede i turni solo dopo che il referente preme
+    **📢 Pubblica turni** (scheda Turni, menu *Altro* sul telefono). Si pubblica una "fotografia" del mese: le modifiche
+    successive i dipendenti le vedono solo con **Aggiorna pubblicazione** (accanto al mese compare
+    *modifiche non pubblicate*); **Ritira pubblicazione** la toglie;
+  - nei turni pubblicati malattia e permessi 104 compaiono solo come **A** (assente), senza il motivo;
+  - finché il mese non è pubblicato il dipendente vede il **tabellone delle richieste** dell'unità (tutte le
+    ambulanze) con le richieste dei colleghi, e tocca i giorni della sua riga per chiedere un **riposo (R)**
+    — al massimo **4 al mese** — o un **permesso 104**, se ne ha diritto, nel limite mensile dei permessi.
+    I permessi 104 dei colleghi li vede solo come **A**;
+  - le richieste si possono inserire o togliere fino al **giorno limite** del mese precedente (predefinito il 15:
+    per dicembre fino al 15 novembre) e mai dopo la pubblicazione. Limiti e giorno si cambiano in *Impostazioni*;
+    i controlli li fa il database, non solo la pagina;
+  - nel tabellone del referente le richieste entrano da sole come `R` / `104` **sottolineate** (anche al posto di
+    turni messi dalla proposta automatica), e la proposta automatica le rispetta. Se in quel giorno c'è già un turno
+    scritto a mano, la richiesta resta in sospeso e compare nei *Controlli* con **Rifiuta la richiesta**; se il
+    referente cambia a mano una casella che veniva da una richiesta, l'app chiede se rifiutarla.
 
 - **Ambulanze e turni** (scheda *Impostazioni*): ogni ambulanza ha un **codice di 5 cifre** e i suoi turni,
   ciascuno con nome (es. `GIORNO`), sigla (es. `G`), **ora di inizio e di fine** e **giorni della settimana**
@@ -168,10 +188,12 @@ npm start    # server locale su http://localhost:8080
 
 - `js/rules.js`: calcolo ore, vincoli e proposta automatica (senza DOM, testato)
 - `js/app.js`: interfaccia del tabellone
+- `js/requests.js`: richieste dei dipendenti nel tabellone e copia pubblicata del mese (senza DOM, testato)
+- `js/staff.js`: schermata del dipendente (turni pubblicati e richieste)
 - `js/auth.js`, `js/config.js`: accesso, registrazione, amministrazione e salvataggio online (Supabase);
   `js/vendor/supabase.min.js` è [supabase-js](https://github.com/supabase/supabase-js) 2.45.4 (licenza MIT)
 - `api/admin-invite.js`: funzione Vercel per l'inserimento manuale degli utenti (usa la chiave service_role)
 - `supabase/schema.sql`: tabelle e regole di sicurezza del database; `supabase/test/` le prove su un Postgres locale:
   `psql -f supabase/test/mock_auth.sql -f supabase/schema.sql -f supabase/test/schema_test.sql`
 - `js/export-xlsx.js`: tabellone in Excel; `js/vendor/exceljs.min.js` è [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (licenza MIT)
-- `tests/rules.test.js`: test delle regole
+- `tests/rules.test.js`: test delle regole; `tests/requests.test.js`: richieste e pubblicazione

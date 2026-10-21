@@ -586,14 +586,17 @@
         toast((waiting.length === 1 ? 'Un referente aspetta' : waiting.length + ' referenti aspettano') +
           ' la tua approvazione (scheda Amministrazione).', true);
       }
-      $('#users-table').innerHTML = '<thead><tr><th>Cognome e nome</th><th>Email</th><th>Unità</th><th>Ruolo</th>' +
+      $('#users-table').innerHTML = '<thead><tr><th>Cognome</th><th>Nome</th><th>Email</th><th>Unità</th><th>Ruolo</th>' +
         '<th>Attivo</th><th>Amministratore</th></tr></thead><tbody>' +
-        (users.length ? '' : '<tr><td colspan="6" class="empty">Nessun utente.</td></tr>') +
+        (users.length ? '' : '<tr><td colspan="7" class="empty">Nessun utente.</td></tr>') +
         users.map(function (u) {
           var unitOpts = '<option value="">— nessuna —</option>' + ctx.units.map(function (x) {
             return '<option value="' + esc(x.id) + '"' + (x.id === u.unit_id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
           }).join('');
-          return '<tr data-user="' + esc(u.id) + '"><td>' + esc(u.last_name + ' ' + u.first_name) + '</td><td>' + esc(u.email) + '</td>' +
+          return '<tr data-user="' + esc(u.id) + '" data-name="' + esc(u.last_name + ' ' + u.first_name) + '">' +
+            '<td><input data-f="last_name" value="' + esc(u.last_name) + '" maxlength="80" aria-label="Cognome"></td>' +
+            '<td><input data-f="first_name" value="' + esc(u.first_name) + '" maxlength="80" aria-label="Nome"></td>' +
+            '<td>' + esc(u.email) + '</td>' +
             '<td><select data-f="unit_id">' + unitOpts + '</select></td>' +
             '<td><select data-f="role">' + Object.keys(ROLES).map(function (k) {
               return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + ROLES[k] + '</option>';
@@ -661,7 +664,7 @@
       b.disabled = true;
       sb.from('profiles').update({ active: true }).eq('id', tr.getAttribute('data-user')).then(function (r) {
         if (r.error) { b.disabled = false; return toast(translateError(r.error), true); }
-        toast(tr.children[0].textContent + ' approvato: ora può accedere.');
+        toast(tr.getAttribute('data-name') + ' approvato: ora può accedere.');
         loadUsers();
       });
     });
@@ -670,7 +673,12 @@
       var tr = ev.target.closest('[data-user]');
       if (!tr) return;
       var f = ev.target.getAttribute('data-f');
-      var name = tr.children[0].textContent;
+      var name = tr.getAttribute('data-name');
+      if (f === 'first_name' || f === 'last_name') {
+        var v = ev.target.value.trim().replace(/\s+/g, ' ');
+        if (!v) { toast('Il ' + (f === 'first_name' ? 'nome' : 'cognome') + ' non può essere vuoto.', true); return loadUsers(); }
+        ev.target.value = v;
+      }
       if (f === 'is_admin' && !confirm(ev.target.checked
         ? 'Nominare ' + name + ' amministratore?\nPotrà gestire unità e utenti (anche nominare o togliere altri amministratori) e vedere i turni di tutte le unità.'
         : 'Togliere a ' + name + ' i diritti di amministratore?')) {
@@ -678,11 +686,16 @@
         return;
       }
       var patch = {};
-      patch[f] = ev.target.type === 'checkbox' ? ev.target.checked : (ev.target.value || null);
+      patch[f] = ev.target.type === 'checkbox' ? ev.target.checked
+        : f === 'first_name' || f === 'last_name' ? ev.target.value : (ev.target.value || null);
       sb.from('profiles').update(patch).eq('id', tr.getAttribute('data-user')).then(function (r) {
         if (r.error) { toast(translateError(r.error), true); return loadUsers(); }
         toast('Utente aggiornato.');
-        if (f === 'role') loadUsers();
+        if (f === 'role' || f === 'first_name' || f === 'last_name') loadUsers();
+        if ((f === 'first_name' || f === 'last_name') && tr.getAttribute('data-user') === ctx.profile.id) {
+          ctx.profile[f] = patch[f];
+          renderUserBar();
+        }
       });
     });
 

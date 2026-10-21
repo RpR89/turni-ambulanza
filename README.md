@@ -31,7 +31,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     *modifiche non pubblicate*); **Ritira pubblicazione** la toglie;
   - nei turni pubblicati malattia e permessi 104 compaiono solo come **A** (assente), senza il motivo;
   - **mail di avviso**: quando il referente (o il vice) pubblica il mese, tutti i dipendenti registrati e attivi
-    dell'unità ricevono una mail; quando aggiorna la pubblicazione l'app chiede se avvisarli di nuovo. La mail parte
+    dell'unità ricevono una mail (solo con *Pubblica turni*: *Aggiorna pubblicazione* non manda mail). La mail parte
     dalla casella dell'app con il nome di chi pubblica come mittente, e "Rispondi" arriva a lui
     (configurazione in [docs/SETUP-SUPABASE.md](docs/SETUP-SUPABASE.md));
   - finché il mese non è pubblicato il dipendente vede il **tabellone delle richieste** dell'unità (tutte le

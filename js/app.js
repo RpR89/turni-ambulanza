@@ -671,12 +671,11 @@
     online.publish(key, O.buildSnapshot(state, view.y, view.m)).then(function (row) {
       online.published[key] = row;
       renderPublish();
-      if (update && !confirm('Turni di ' + title + ' aggiornati.\nVuoi avvisare via mail i dipendenti dell\'aggiornamento?')) {
-        return toast('Turni di ' + title + ' aggiornati (nessuna mail).');
-      }
-      toast('Turni di ' + title + (update ? ' aggiornati' : ' pubblicati') + ': invio le mail ai dipendenti…');
-      return online.notify({ type: 'published', month: key, update: update }).then(function (r) {
-        toast('Turni di ' + title + (update ? ' aggiornati' : ' pubblicati') + '. ' +
+      // La mail di avviso parte solo alla prima pubblicazione del mese, non con "Aggiorna pubblicazione".
+      if (update) return toast('Turni di ' + title + ' aggiornati.');
+      toast('Turni di ' + title + ' pubblicati: invio le mail ai dipendenti…');
+      return online.notify({ type: 'published', month: key }).then(function (r) {
+        toast('Turni di ' + title + ' pubblicati. ' +
           (r.sent ? 'Mail di avviso mandata a ' + r.sent + (r.sent === 1 ? ' dipendente' : ' dipendenti') +
             (r.failed ? ' (' + r.failed + ' non riuscite)' : '') + '.' : 'Nessun dipendente registrato da avvisare.'), !!r.failed);
       }, function (e) {

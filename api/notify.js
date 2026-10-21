@@ -1,6 +1,6 @@
 /*
  * Funzione Vercel: avvisi via mail ai dipendenti.
- *   - type "published": i turni del mese sono stati pubblicati (o aggiornati) → a tutti i dipendenti
+ *   - type "published": i turni del mese sono stati pubblicati → a tutti i dipendenti
  *     attivi dell'unità;
  *   - type "rejected": richieste di riposo / 104 non accolte, con la motivazione → al dipendente.
  * La può chiamare solo un referente o vice referente attivo dell'unità (o un amministratore).
@@ -106,14 +106,13 @@ async function handler(req, res) {
     if (!pub.length) return send(res, 400, { error: 'I turni di questo mese non risultano pubblicati' });
     const [y, m] = month.split('-').map(Number);
     const title = MONTHS[m - 1] + ' ' + y;
-    const update = !!body.update;
     const staff = await rest('profiles?select=first_name,email&role=eq.dipendente&active=eq.true&unit_id=eq.' + unit);
     messages = staff.map(p => ({
       to: p.email,
-      subject: (update ? 'Turni di ' + title + ' aggiornati' : 'Turni di ' + title + ' pubblicati') +
+      subject: 'Turni di ' + title + ' pubblicati' +
         (unitName ? ' – ' + unitName : ''),
       text: 'Ciao ' + oneLine(p.first_name, 80) + ',\n\n' +
-        (update ? 'i turni di ' + title + ' sono stati aggiornati' : 'sono stati pubblicati i turni di ' + title) +
+        'sono stati pubblicati i turni di ' + title +
         (unitName ? ' dell\'unità ' + unitName : '') + '.\n' +
         (site ? 'Puoi vederli qui: ' + site + '\n' : '') + replyNote + FOOTER
     }));

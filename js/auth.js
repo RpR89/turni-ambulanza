@@ -217,7 +217,7 @@
         var who = r.data.role === 'dipendente' ? 'il referente della tua unità' : 'l\'amministratore';
         return showAuth('info', !r.data.approved_at
           ? 'Il tuo account è in attesa di approvazione: deve approvarlo ' + who + '. Riprova più tardi.'
-          : 'Il tuo account è disattivato. Contatta ' + who + '.');
+          : 'Il tuo account è ' + (r.data.role === 'dipendente' ? 'sospeso' : 'disattivato') + '. Contatta ' + who + '.');
       }
       return loadUnits().then(function () {
         var unit = r.data.unit_id && ctx.units.some(function (u) { return u.id === r.data.unit_id; }) ? r.data.unit_id : null;
@@ -297,6 +297,18 @@
         return sb.from('published').delete().eq('unit_id', unitId).eq('month', month).then(function (r) {
           if (r.error) throw r.error;
         });
+      },
+      // Sospensione o riattivazione di un dipendente: blocca o sblocca il suo account (se ne ha uno).
+      setEmployeeAccess: function (employeeId, active) {
+        return sb.from('profiles').select('id,approved_at').eq('unit_id', unitId).eq('role', 'dipendente')
+          .eq('employee_id', employeeId).then(function (r) {
+            if (r.error) throw r.error;
+            var list = (r.data || []).filter(function (p) { return p.approved_at; });
+            return Promise.all(list.map(function (p) {
+              return sb.rpc('manage_employee_account', { p_profile: p.id, p_employee_id: employeeId, p_active: active })
+                .then(function (x) { if (x.error) throw x.error; });
+            })).then(function () { renderAccounts(); return list.length; });
+          });
       },
       rejectRequests: function (ids) {
         return sb.from('requests').delete().in('id', ids).then(function (r) {

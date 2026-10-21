@@ -531,3 +531,24 @@ body.staff-mode .tabs, body.staff-mode main > .panel { display: none !important;
   border-radius: 6px; font-weight: 700; }
 .my-shifts .cell small { font-size: 9px; margin-left: 1px; }
 .my-shifts .what { font-size: 13px; }
+
+/* ---------- Volontari generici ---------- */
+
+.grid td.cov { cursor: pointer; }
+.grid td.cov:hover { outline: 2px solid var(--text); outline-offset: -2px; }
+.grid td.cov .vol-mark { display: block; font-size: 9px; line-height: 1; font-weight: 700; color: var(--accent); }
+.vol-pop {
+  position: absolute; z-index: 60; width: 270px; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+.vol-head { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
+.vol-head button { margin-left: auto; padding: 2px 8px; }
+.vol-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.vol-row span { flex: 1; font-size: 14px; }
+.vol-row button { width: 36px; height: 36px; justify-content: center; font-size: 18px; padding: 0; }
+.vol-row b { min-width: 18px; text-align: center; }
+.vol-pop .note { margin: 6px 0 0; font-size: 12px; }
+
+/* Dipendenti sospesi */
+#emp-table tr.suspended td, #emp-table tr.suspended input, #emp-table tr.suspended select { color: var(--muted); }
+#emp-table tr.suspended { background: var(--bg); }

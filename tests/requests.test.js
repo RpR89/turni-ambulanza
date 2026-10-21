@@ -74,6 +74,10 @@ test('pubblicazione: solo il mese, malattia e 104 senza motivo', () => {
   assert.deepEqual(snap.cells.b, { '2026-12-01': { code: 'C', hours: 7 }, '2026-12-02': 'F', '2026-12-03': 'R' });
   assert.equal(snap.employees[0].has104, undefined); // nessun dato sulla 104 nella copia pubblica
   assert.equal(snap.ambulances[0].shifts[0].label, 'G');
+  assert.deepEqual(snap.volunteers, {});
+  s.volunteers = { '2026-12-05': { G: { A: 1, S: 0 }, N: { A: 0, S: 0 } }, '2027-01-02': { G: { A: 1, S: 1 } } };
+  assert.deepEqual(O.buildSnapshot(s, 2026, 12).volunteers, { '2026-12-05': { G: { A: 1, S: 0 } } });
+  delete s.volunteers;
   assert.ok(O.sameSnapshot(snap, O.buildSnapshot(s, 2026, 12)));
   // il database restituisce le chiavi in un altro ordine: conta solo il contenuto
   const reverseKeys = v => Array.isArray(v) ? v.map(reverseKeys)

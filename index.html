@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Turni">
-  <link rel="stylesheet" href="css/style.css?v=3.1">
+  <link rel="stylesheet" href="css/style.css?v=3.2">
 </head>
 <body>
   <header class="topbar no-print">
@@ -170,7 +170,8 @@
         Scegli cosa inserire e clicca sulle caselle (puoi anche trascinare). Con <kbd>Maiusc</kbd>+clic
         aggiungi un turno a quelli già presenti nel giorno (o lo togli). Da tastiera: frecce per muoverti,
         <kbd>G</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>C</kbd> per scrivere, <kbd>Canc</kbd> per cancellare,
-        <kbd>L</kbd> per bloccare/sbloccare. Le caselle bloccate 🔒 non vengono mai cambiate dalla proposta automatica:
+        <kbd>L</kbd> per bloccare/sbloccare. Clicca su un numero della <b>copertura</b> per mettere nel turno un
+        <b>volontario</b> generico (autista o soccorritore). Le caselle bloccate 🔒 non vengono mai cambiate dalla proposta automatica:
         blocca i turni che hai sistemato e usa <b>Rifai proposta</b> per ricalcolare il resto.
         I turni in <i>corsivo</i> sono quelli inseriti dalla proposta automatica: solo questi vengono ricalcolati da
         <b>Rifai proposta</b>. Quelli scritti a mano si cancellano solo con <b>Reset completo</b>.
@@ -343,18 +344,19 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.1 (registrazione solo per i dipendenti)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.2 (volontari e sospensione)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="vol-pop" class="vol-pop no-print" role="dialog" aria-label="Volontari nel turno" hidden></div>
 
-  <script src="js/config.js?v=3.1"></script>
-  <script src="js/vendor/supabase.min.js?v=3.1"></script>
-  <script src="js/rules.js?v=3.1"></script>
-  <script src="js/requests.js?v=3.1"></script>
-  <script src="js/logo.js?v=3.1"></script>
-  <script src="js/export-xlsx.js?v=3.1"></script>
-  <script src="js/staff.js?v=3.1"></script>
-  <script src="js/auth.js?v=3.1"></script>
-  <script src="js/app.js?v=3.1"></script>
+  <script src="js/config.js?v=3.2"></script>
+  <script src="js/vendor/supabase.min.js?v=3.2"></script>
+  <script src="js/rules.js?v=3.2"></script>
+  <script src="js/requests.js?v=3.2"></script>
+  <script src="js/logo.js?v=3.2"></script>
+  <script src="js/export-xlsx.js?v=3.2"></script>
+  <script src="js/staff.js?v=3.2"></script>
+  <script src="js/auth.js?v=3.2"></script>
+  <script src="js/app.js?v=3.2"></script>
 </body>
 </html>

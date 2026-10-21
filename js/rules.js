@@ -647,8 +647,9 @@
       var wd = weekday(key);
       shiftCatalog(state).list.forEach(function (s) {
         var need = s.days[wd] ? cfg.crewSize : 0;
-        var staff = staffOn(state, key, s.id);
-        var have = staff.length;
+        var cov = coverageOf(state, key, s.id);
+        var staff = cov.staff;
+        var have = cov.total;
         if (have !== need) {
           issues.push({
             level: 'warning', type: 'coverage', dates: [key], shift: s.id,
@@ -657,7 +658,7 @@
           });
         }
         // Un turno con personale deve avere almeno un autista soccorritore.
-        var drivers = staff.filter(isDriver).length;
+        var drivers = cov.drivers;
         if (have > 0 && drivers < cfg.minDrivers) {
           issues.push({
             level: 'error', type: 'driver', dates: [key], shift: s.id,
@@ -681,6 +682,24 @@
     return activeOf(state).filter(function (e) {
       return shiftIdsOn(state, e.id, key).indexOf(shiftId) >= 0;
     });
+  }
+
+  // Volontari generici (senza nome) messi in un turno per coprirlo: state.volunteers[giorno][turno] = { A, S }
+  // (A = autisti soccorritori, S = soccorritori). Contano per la copertura, non per le ore dei dipendenti.
+  function volunteersOn(state, key, shiftId) {
+    var v = state.volunteers && state.volunteers[key] && state.volunteers[key][shiftId];
+    var drivers = v ? Math.max(0, +v.A || 0) : 0, rescuers = v ? Math.max(0, +v.S || 0) : 0;
+    return { drivers: drivers, rescuers: rescuers, total: drivers + rescuers };
+  }
+
+  // Copertura di un turno: dipendenti più volontari.
+  function coverageOf(state, key, shiftId) {
+    var staff = staffOn(state, key, shiftId), vol = volunteersOn(state, key, shiftId);
+    return {
+      staff: staff, volunteers: vol,
+      total: staff.length + vol.total,
+      drivers: staff.filter(isDriver).length + vol.drivers
+    };
   }
 
   // ---------- Proposta automatica ----------
@@ -722,7 +741,8 @@
       settings: state.settings,
       employees: activeOf(state),
       assignments: JSON.parse(JSON.stringify(state.assignments || {})),
-      locks: state.locks || {}
+      locks: state.locks || {},
+      volunteers: state.volunteers || {}
     };
     var auto = JSON.parse(JSON.stringify(state.auto || {}));
     work.employees.forEach(function (e) { if (!work.assignments[e.id]) work.assignments[e.id] = {}; });
@@ -761,9 +781,9 @@
       var wStart = weekStart(key);
       shiftsForDay(work, key).forEach(function (sh) {
         var code = sh.id;
-        var staffed = staffOn(work, key, code);
-        var need = cfg.crewSize - staffed.length;
-        var driversNeeded = Math.max(0, cfg.minDrivers - staffed.filter(isDriver).length);
+        var cov = coverageOf(work, key, code);
+        var need = cfg.crewSize - cov.total;
+        var driversNeeded = Math.max(0, cfg.minDrivers - cov.drivers);
         while (need > 0) {
           var available = work.employees.filter(function (e) {
             return !codeOn(work, e.id, key) && !isLocked(state, e.id, key) &&
@@ -940,8 +960,8 @@
     }
 
     function driversOk(key, sid) {
-      var staff = staffOn(work, key, sid);
-      return !staff.length || staff.filter(isDriver).length >= minDrivers;
+      var cov = coverageOf(work, key, sid);
+      return !cov.total || cov.drivers >= minDrivers;
     }
 
     // Prova una mossa (elenco di [dipendente, giorno, turno tolto, turno aggiunto]):
@@ -1049,6 +1069,8 @@
     weekendsWorked: weekendsWorked,
     softBlockers: softBlockers,
     weekShiftCount: weekShiftCount,
+    volunteersOn: volunteersOn,
+    coverageOf: coverageOf,
     workedDay: workedDay,
     generateMonth: generateMonth
   };

@@ -400,6 +400,11 @@ begin
     raise exception 'Termine scaduto: le richieste per questo mese si potevano inserire fino al %',
       to_char(public.request_deadline(me.unit_id, month_start), 'DD/MM/YYYY') using errcode = 'check_violation';
   end if;
+  select e into emp from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
+    where d.unit_id = me.unit_id and e ->> 'id' = me.employee_id;
+  if emp is null or not coalesce((emp ->> 'active')::boolean, true) then
+    raise exception 'Il tuo account è sospeso: parlane con il referente' using errcode = 'insufficient_privilege';
+  end if;
   if exists (select 1 from public.published where unit_id = me.unit_id and month = month_key) then
     raise exception 'I turni di questo mese sono già pubblicati: per cambiare chiedi al referente'
       using errcode = 'check_violation';
@@ -417,8 +422,6 @@ begin
       used, public.unit_setting(me.unit_id, 'maxRestRequests', 4) using errcode = 'check_violation';
   end if;
   if p_kind = 'P' then
-    select e into emp from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
-      where d.unit_id = me.unit_id and e ->> 'id' = me.employee_id;
     if not coalesce((emp ->> 'has104')::boolean, false) then
       raise exception 'Non risulti avere diritto ai permessi 104: parlane con il referente' using errcode = 'check_violation';
     end if;

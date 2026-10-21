@@ -103,6 +103,10 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 - **Copertura**: sotto il tabellone, una riga per ogni turno di ogni ambulanza con quante persone ci sono
   (2 richieste per turno, modificabile in *Impostazioni*); in rosso se mancano persone o l'autista,
   `–` nei giorni in cui il turno non è previsto.
+- **Volontari generici**: cliccando un numero della copertura si mettono nel turno uno o più volontari senza nome,
+  *autista soccorritore* o *soccorritore* (sotto il numero compare per esempio `2V`). Contano per la copertura e per
+  l'autista richiesto, la proposta automatica non mette dipendenti dove bastano, non hanno ore. In Excel compaiono come
+  `VOL. AUTISTA` / `VOLONTARIO`, nei turni pubblicati in una riga *Volontari*. *Reset completo* li toglie.
 - **Proposta automatica**: riempie i turni scoperti di tutte le ambulanze, nei giorni previsti,
   senza toccare quelli già inseriti.
   Rispetta sempre i vincoli e dà la precedenza a chi è più indietro con il monte ore.
@@ -152,8 +156,9 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   La notte tra venerdì e sabato conta come venerdì, quindi non consuma un weekend;
   la notte tra domenica e lunedì conta come domenica.
   Ferie, malattia, permessi 104, formazione e richieste di non lavorare nel weekend non contano.
-- I dipendenti disattivati (spunta *Attivo* tolta) spariscono dal tabellone e dai controlli,
-  ma i loro turni passati restano salvati.
+- **Sospendere un dipendente** (scheda Dipendenti, *Sospendi* / *Riattiva*): finché è sospeso non compare nel
+  tabellone, nei controlli, nella proposta automatica, in Excel e nei turni pubblicati (i suoi turni restano salvati);
+  con l'accesso utenti attivo il suo account viene bloccato e non può entrare né fare richieste, finché non lo riattivi.
 
 ## Come si usa
 

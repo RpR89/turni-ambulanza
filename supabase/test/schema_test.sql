@@ -237,6 +237,21 @@ end $$;
 reset role;
 reset request.jwt.claim.sub;
 
+-- Luca sospeso nel tabellone (active = false): non può più fare richieste
+update public.unit_data set data = jsonb_set(data, '{employees,0,active}', 'false')
+  where unit_id = '22222222-2222-2222-2222-222222222222';
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
+do $$ begin
+  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 7, 'R');
+  raise exception 'ERRORE: richiesta da dipendente sospeso';
+exception when insufficient_privilege then raise notice 'OK sospeso non fa richieste';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+update public.unit_data set data = jsonb_set(data, '{employees,0,active}', 'true')
+  where unit_id = '22222222-2222-2222-2222-222222222222';
+
 -- Sara: senza 104 non può chiederla; vede il permesso di Luca solo come "A"
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000005';

@@ -12,10 +12,14 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - registrazione con nome, cognome, email, **unità di appartenenza** e **ruolo** (dipendente, referente o vice referente),
     accettando l'informativa privacy; solo indirizzi **@critn.it** (controllo anche nel database) e conferma via mail;
   - accesso con email e password, recupero della password via mail;
+  - chi si registra da solo resta **in attesa di approvazione**: referenti e vice li approva un amministratore
+    (scheda *Amministrazione*, pulsante **Approva**), i dipendenti il referente della loro unità; chi viene
+    invitato dall'amministratore è già approvato;
   - ogni utente vede e modifica solo i turni della **propria unità**, salvati online e condivisi tra
     referente e vice referente; se due persone salvano insieme l'app lo segnala e chiede quale versione tenere;
-  - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti con unità, ruolo,
-    attivo/disattivo e amministratore, inserimento manuale di utenti con mail di invito;
+  - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti (prima quelli da approvare)
+    con unità, ruolo, attivo/disattivo e amministratore — **un amministratore può nominare altri amministratori** —,
+    inserimento manuale di utenti con mail di invito;
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 - **Accesso dei dipendenti** (con il back end attivo):
   - il dipendente si registra con ruolo *Dipendente*; dopo la conferma della mail resta **in attesa** finché il

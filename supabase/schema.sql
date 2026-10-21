@@ -13,6 +13,8 @@
 --   published  i turni del mese resi pubblici per i dipendenti (copia "fotografata")
 -- Regole:
 --   - ci si può registrare solo con un indirizzo @critn.it (controllo nel database)
+--   - chi si registra resta in attesa: referenti e vice li approva l'amministratore,
+--     i dipendenti il referente della loro unità (gli invitati dall'amministratore sono già attivi)
 --   - referenti e vice referenti vedono e modificano solo i turni della propria unità
 --   - i dipendenti, dopo l'approvazione del referente, vedono solo i turni pubblicati
 --     e le richieste; inseriscono le proprie richieste entro il giorno limite
@@ -43,6 +45,9 @@ create table if not exists public.profiles (
 
 -- Aggiornamento delle installazioni precedenti: ruolo "dipendente" e collegamento al tabellone.
 alter table public.profiles add column if not exists employee_id text;
+-- Data della prima approvazione: vuota = account mai approvato (in attesa), altrimenti disattivato dopo.
+alter table public.profiles add column if not exists approved_at timestamptz;
+update public.profiles set approved_at = created_at where approved_at is null and active;
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check
   check (role in ('referente', 'vice_referente', 'dipendente'));
@@ -94,7 +99,8 @@ begin
   if unit is not null and not exists (select 1 from public.units where id = unit) then
     unit := null;
   end if;
-  -- I dipendenti restano in attesa finché il referente della loro unità non li approva.
+  -- Tutti restano in attesa: i dipendenti li approva il referente della loro unità, referenti e vice
+  -- l'amministratore (chi viene invitato dall'amministratore è attivato subito dalla funzione di invito).
   insert into public.profiles (id, email, first_name, last_name, unit_id, role, active)
   values (
     new.id,
@@ -104,7 +110,7 @@ begin
     unit,
     case meta ->> 'role' when 'vice_referente' then 'vice_referente' when 'dipendente' then 'dipendente'
       else 'referente' end,
-    coalesce(meta ->> 'role', '') <> 'dipendente'
+    false
   )
   on conflict (id) do nothing;
   return new;
@@ -152,10 +158,15 @@ begin
     and coalesce(current_setting('turni.gestione', true), '') <> 'on' then
     if new.unit_id is distinct from old.unit_id or new.role is distinct from old.role
       or new.active is distinct from old.active or new.is_admin is distinct from old.is_admin
-      or new.email is distinct from old.email or new.employee_id is distinct from old.employee_id then
+      or new.email is distinct from old.email or new.employee_id is distinct from old.employee_id
+      or new.approved_at is distinct from old.approved_at then
       raise exception 'Solo l''amministratore può modificare unità, ruolo e stato'
         using errcode = 'insufficient_privilege';
     end if;
+  end if;
+  -- La prima attivazione segna l'approvazione (così si distingue chi è in attesa da chi è disattivato).
+  if new.active and new.approved_at is null then
+    new.approved_at := now();
   end if;
   return new;
 end;
@@ -431,5 +442,7 @@ grant execute on function public.set_request(date, text) to authenticated;
 -- DOPO la tua registrazione, rendi amministratore il tuo utente
 -- (sostituisci l'indirizzo e esegui solo questa riga):
 --
---   update public.profiles set is_admin = true where email = 'nome.cognome@critn.it';
+--   update public.profiles set is_admin = true, active = true where email = 'nome.cognome@critn.it';
+--
+-- Poi gli altri amministratori li nomini dall'app (scheda Amministrazione, casella "Amministratore").
 -- =====================================================================

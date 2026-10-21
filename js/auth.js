@@ -171,9 +171,8 @@
         var staff = f.role.value === 'dipendente';
         f.reset();
         showAuth('login', 'Quasi fatto: ti abbiamo mandato una mail a ' + email +
-          '. Apri il link per confermare l\'indirizzo' + (staff
-            ? '. Poi il referente della tua unità deve approvare il tuo account: quando l\'ha fatto potrai accedere.'
-            : ', poi accedi con la tua password.'));
+          '. Apri il link per confermare l\'indirizzo. Poi ' + (staff ? 'il referente della tua unità' : 'l\'amministratore') +
+          ' deve approvare il tuo account: quando l\'ha fatto potrai accedere con la tua password.');
       });
     });
 
@@ -216,9 +215,10 @@
       if (r.error || !r.data) return showAuth('info', 'Profilo non trovato. Contatta l\'amministratore.');
       ctx.profile = r.data;
       if (!r.data.active) {
-        return showAuth('info', r.data.role === 'dipendente' && !r.data.employee_id
-          ? 'Il tuo account è in attesa di approvazione da parte del referente della tua unità. Riprova più tardi.'
-          : 'Il tuo account è disattivato. Contatta ' + (r.data.role === 'dipendente' ? 'il referente della tua unità.' : 'l\'amministratore.'));
+        var who = r.data.role === 'dipendente' ? 'il referente della tua unità' : 'l\'amministratore';
+        return showAuth('info', !r.data.approved_at
+          ? 'Il tuo account è in attesa di approvazione: deve approvarlo ' + who + '. Riprova più tardi.'
+          : 'Il tuo account è disattivato. Contatta ' + who + '.');
       }
       return loadUnits().then(function () {
         var unit = r.data.unit_id && ctx.units.some(function (u) { return u.id === r.data.unit_id; }) ? r.data.unit_id : null;
@@ -433,12 +433,12 @@
     var card = $('#accounts-card');
     var p = ctx.profile;
     if (!card || !p || !ctx.unitId || !(p.is_admin || p.role === 'referente' || p.role === 'vice_referente')) return;
-    sb.from('profiles').select('id,email,first_name,last_name,active,employee_id,created_at')
+    sb.from('profiles').select('id,email,first_name,last_name,active,employee_id,approved_at,created_at')
       .eq('unit_id', ctx.unitId).eq('role', 'dipendente').order('last_name').then(function (r) {
         if (r.error) return;
         var list = r.data || [];
         var employees = (window.TurniApp.getState().employees || []).filter(function (e) { return e.active !== false; });
-        var pending = list.filter(function (u) { return !u.active && !u.employee_id; });
+        var pending = list.filter(function (u) { return !u.active && !u.approved_at; });
         card.hidden = false;
         var btn = $('.tab[data-tab="dipendenti"]');
         btn.innerHTML = 'Dipendenti' + (pending.length ? ' <span class="tab-badge" title="Account da approvare">' + pending.length + '</span>' : '');
@@ -456,12 +456,12 @@
               return '<option value="' + esc(e.id) + '"' + (e.id === sel ? ' selected' : '') + '>' + esc(e.name) + '</option>';
             }).join('');
             var state = u.active ? '<span class="badge good">attivo</span>'
-              : u.employee_id ? '<span class="badge">disattivato</span>' : '<span class="badge soft">da approvare</span>';
+              : u.approved_at ? '<span class="badge">disattivato</span>' : '<span class="badge soft">da approvare</span>';
             return '<tr data-account="' + esc(u.id) + '"><td>' + esc(u.last_name + ' ' + u.first_name) + '</td>' +
               '<td>' + esc(u.email) + '</td><td><select data-f="employee">' + opts + '</select></td><td>' + state + '</td><td>' +
               (u.active
                 ? '<button type="button" data-act="save">Salva</button> <button type="button" data-act="disable" class="danger">Disattiva</button>'
-                : '<button type="button" data-act="approve" class="primary">' + (u.employee_id ? 'Riattiva' : 'Approva') + '</button>') +
+                : '<button type="button" data-act="approve" class="primary">' + (u.approved_at ? 'Riattiva' : 'Approva') + '</button>') +
               '</td></tr>';
           }).join('') + '</tbody>';
       });
@@ -544,14 +544,26 @@
     return loadUnits().then(function () { renderUnitsAdmin(); renderUserBar(); fillUnitSelect($('#invite-form').unit, null, false); loadUsers(); });
   }
 
+  // In attesa: mai approvato. Referenti e vice li approva l'amministratore, i dipendenti il loro referente.
+  function isPending(u) { return !u.active && !u.approved_at; }
+
   function loadUsers() {
     sb.from('profiles').select('*').order('last_name').then(function (r) {
       if (r.error) return toast('Utenti non caricati: ' + translateError(r.error), true);
       var me = ctx.profile.id;
+      var users = r.data.slice().sort(function (a, b) { return isPending(b) - isPending(a); });
+      var waiting = users.filter(function (u) { return isPending(u) && u.role !== 'dipendente'; });
+      $('#tab-admin-btn').innerHTML = 'Amministrazione' +
+        (waiting.length ? ' <span class="tab-badge" title="Referenti da approvare">' + waiting.length + '</span>' : '');
+      if (waiting.length && !ctx.adminPendingShown) {
+        ctx.adminPendingShown = true;
+        toast((waiting.length === 1 ? 'Un referente aspetta' : waiting.length + ' referenti aspettano') +
+          ' la tua approvazione (scheda Amministrazione).', true);
+      }
       $('#users-table').innerHTML = '<thead><tr><th>Cognome e nome</th><th>Email</th><th>Unità</th><th>Ruolo</th>' +
         '<th>Attivo</th><th>Amministratore</th></tr></thead><tbody>' +
-        (r.data.length ? '' : '<tr><td colspan="6" class="empty">Nessun utente.</td></tr>') +
-        r.data.map(function (u) {
+        (users.length ? '' : '<tr><td colspan="6" class="empty">Nessun utente.</td></tr>') +
+        users.map(function (u) {
           var unitOpts = '<option value="">— nessuna —</option>' + ctx.units.map(function (x) {
             return '<option value="' + esc(x.id) + '"' + (x.id === u.unit_id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
           }).join('');
@@ -560,8 +572,13 @@
             '<td><select data-f="role">' + Object.keys(ROLES).map(function (k) {
               return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + ROLES[k] + '</option>';
             }).join('') + '</select></td>' +
-            '<td><input type="checkbox" data-f="active"' + (u.active ? ' checked' : '') + (u.id === me ? ' disabled' : '') + '></td>' +
-            '<td><input type="checkbox" data-f="is_admin"' + (u.is_admin ? ' checked' : '') + (u.id === me ? ' disabled' : '') + '></td></tr>';
+            '<td>' + (isPending(u)
+              ? (u.role === 'dipendente'
+                ? '<span class="badge soft" title="Lo approva il referente della sua unità, scegliendo la sua riga del tabellone">attende il referente</span>'
+                : '<button type="button" class="primary" data-act="approve-user">Approva</button>')
+              : '<input type="checkbox" data-f="active"' + (u.active ? ' checked' : '') + (u.id === me ? ' disabled' : '') + '>') + '</td>' +
+            '<td><input type="checkbox" data-f="is_admin" title="Gli amministratori gestiscono unità e utenti e vedono i turni di tutte le unità"' +
+            (u.is_admin ? ' checked' : '') + (u.id === me ? ' disabled' : '') + '></td></tr>';
         }).join('') + '</tbody>';
     });
   }
@@ -609,10 +626,31 @@
       });
     });
 
+    $('#users-table').addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-act="approve-user"]');
+      if (!b) return;
+      var tr = b.closest('[data-user]');
+      var unit = tr.querySelector('[data-f="unit_id"]').value;
+      if (!unit) return toast('Scegli prima l\'unità di questo utente.', true);
+      b.disabled = true;
+      sb.from('profiles').update({ active: true }).eq('id', tr.getAttribute('data-user')).then(function (r) {
+        if (r.error) { b.disabled = false; return toast(translateError(r.error), true); }
+        toast(tr.children[0].textContent + ' approvato: ora può accedere.');
+        loadUsers();
+      });
+    });
+
     $('#users-table').addEventListener('change', function (ev) {
       var tr = ev.target.closest('[data-user]');
       if (!tr) return;
       var f = ev.target.getAttribute('data-f');
+      var name = tr.children[0].textContent;
+      if (f === 'is_admin' && !confirm(ev.target.checked
+        ? 'Nominare ' + name + ' amministratore?\nPotrà gestire unità e utenti (anche nominare o togliere altri amministratori) e vedere i turni di tutte le unità.'
+        : 'Togliere a ' + name + ' i diritti di amministratore?')) {
+        ev.target.checked = !ev.target.checked;
+        return;
+      }
       var patch = {};
       patch[f] = ev.target.type === 'checkbox' ? ev.target.checked : (ev.target.value || null);
       sb.from('profiles').update(patch).eq('id', tr.getAttribute('data-user')).then(function (r) {

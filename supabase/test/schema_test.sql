@@ -26,8 +26,38 @@ do $$ begin
 exception when check_violation then raise notice 'OK dominio falso rifiutato';
 end $$;
 
+-- tutti in attesa dopo la registrazione
+select 'in attesa', count(*) from public.profiles where not active and approved_at is null;  -- 3
+
+-- un referente in attesa non vede né salva i turni
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+do $$ begin
+  perform public.save_unit_data('11111111-1111-1111-1111-111111111111', '{}', 0);
+  raise exception 'ERRORE: referente non approvato ha salvato';
+exception when insufficient_privilege then raise notice 'OK referente in attesa bloccato';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
 -- amministratore impostato dall'editor SQL (nessun utente collegato)
-update public.profiles set is_admin = true where email = 'capo@critn.it';
+update public.profiles set is_admin = true, active = true where email = 'capo@critn.it';
+
+-- l'amministratore approva i referenti e nomina un altro amministratore
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set active = true where email in ('mario.rossi@critn.it', 'anna.verdi@critn.it');
+update public.profiles set is_admin = true where email = 'anna.verdi@critn.it';
+reset role;
+reset request.jwt.claim.sub;
+select 'approvati', count(*) from public.profiles where active and approved_at is not null;   -- 3
+select 'admin', string_agg(email, ',' order by email) from public.profiles where is_admin;    -- anna, capo
+-- per le prove successive Anna torna referente semplice (glielo toglie un amministratore)
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set is_admin = false where email = 'anna.verdi@critn.it';
+reset role;
+reset request.jwt.claim.sub;
 
 grant usage on schema public to authenticated;
 
@@ -51,6 +81,11 @@ do $$ begin
   update public.profiles set role = 'referente' where id = auth.uid();
   raise exception 'ERRORE: utente ha cambiato il proprio ruolo';
 exception when insufficient_privilege then raise notice 'OK ruolo protetto';
+end $$;
+do $$ begin
+  update public.profiles set is_admin = true where id = auth.uid();
+  raise exception 'ERRORE: utente si è nominato amministratore';
+exception when insufficient_privilege then raise notice 'OK amministratore protetto';
 end $$;
 update public.profiles set first_name = 'Marione' where id = auth.uid();
 do $$ begin

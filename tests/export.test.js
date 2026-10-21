@@ -44,3 +44,15 @@ test('righe del tabellone: giorno, notte, formazione e assenze', () => {
   assert.ok(rows.every(r => r.extra.length === 0 && r.events.length === 0)); // EXTRA e MANIFESTAZIONI vuote
   assert.equal(rows[27].date, '01-nov');
 });
+
+test('volontari generici nel tabellone Excel: autisti prima, senza nome', () => {
+  const employees = [
+    { id: 'a', name: 'Rossi Mario', role: 'soccorritore', weeklyHours: 38 },
+    { id: 'b', name: 'Verdi Anna', role: 'autista', weeklyHours: 38, active: false }
+  ];
+  const state = { settings: R.DEFAULT_SETTINGS, employees, assignments: { a: { '2026-10-05': 'G' }, b: { '2026-10-05': 'N' } },
+    volunteers: { '2026-10-05': { G: { A: 1, S: 0 }, N: { A: 0, S: 2 } } } };
+  const rows = X.tabelloneRows(R, state, 2026, 10);
+  assert.deepEqual(rows[0].shifts.G, ['VOL. AUTISTA', 'ROSSI']);
+  assert.deepEqual(rows[0].shifts.N, ['VOLONTARIO', 'VOLONTARIO']); // la sospesa non compare
+});

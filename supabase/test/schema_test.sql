@@ -41,12 +41,16 @@ reset role;
 reset request.jwt.claim.sub;
 
 -- amministratore impostato dall'editor SQL (nessun utente collegato)
-update public.profiles set is_admin = true, active = true where email = 'capo@critn.it';
+update public.profiles set is_admin = true, active = true, role = 'referente' where email = 'capo@critn.it';
 
 -- l'amministratore approva i referenti e nomina un altro amministratore
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
-update public.profiles set active = true where email in ('mario.rossi@critn.it', 'anna.verdi@critn.it');
+-- chi si registra è sempre dipendente, anche se il modulo dice altro: il ruolo lo dà l'amministratore
+select 'ruoli alla registrazione', string_agg(distinct role, ',') from public.profiles
+  where email <> 'capo@critn.it';                                                   -- dipendente
+update public.profiles set active = true, role = 'vice_referente' where email = 'mario.rossi@critn.it';
+update public.profiles set active = true, role = 'referente' where email = 'anna.verdi@critn.it';
 update public.profiles set is_admin = true where email = 'anna.verdi@critn.it';
 reset role;
 reset request.jwt.claim.sub;
@@ -232,6 +236,21 @@ exception when insufficient_privilege then raise notice 'OK inserimento diretto 
 end $$;
 reset role;
 reset request.jwt.claim.sub;
+
+-- Luca sospeso nel tabellone (active = false): non può più fare richieste
+update public.unit_data set data = jsonb_set(data, '{employees,0,active}', 'false')
+  where unit_id = '22222222-2222-2222-2222-222222222222';
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
+do $$ begin
+  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 7, 'R');
+  raise exception 'ERRORE: richiesta da dipendente sospeso';
+exception when insufficient_privilege then raise notice 'OK sospeso non fa richieste';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+update public.unit_data set data = jsonb_set(data, '{employees,0,active}', 'true')
+  where unit_id = '22222222-2222-2222-2222-222222222222';
 
 -- Sara: senza 104 non può chiederla; vede il permesso di Luca solo come "A"
 set role authenticated;

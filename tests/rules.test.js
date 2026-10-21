@@ -480,3 +480,26 @@ test('massimo 6 giorni di lavoro di fila, contando lo smonto notte', () => {
   s2.settings.maxConsecutiveDays = 7;
   assert.equal(R.validateMonth(s2, 2026, 10).filter(i => i.type === 'consecutive').length, 0);
 });
+
+test('volontari generici: coprono il turno e contano come autista', () => {
+  const emps = [{ id: 'a', name: 'Anna', weeklyHours: 38, role: 'soccorritore' }];
+  const s = makeState(emps, { a: { '2026-10-12': 'G' } });
+  s.volunteers = { '2026-10-12': { G: { A: 1, S: 0 } } };
+  const issues = R.validateMonth(s, 2026, 10).filter(i => i.dates[0] === '2026-10-12' && (i.shift === 'G'));
+  assert.deepEqual(issues, []); // 2 su 2, con l'autista (volontario)
+  assert.deepEqual(R.coverageOf(s, '2026-10-12', 'G').total, 2);
+  // senza il volontario autista manca l'autista
+  s.volunteers['2026-10-12'].G = { A: 0, S: 1 };
+  assert.ok(R.validateMonth(s, 2026, 10).some(i => i.type === 'driver' && i.dates[0] === '2026-10-12'));
+
+  // la proposta automatica non mette dipendenti dove i volontari bastano
+  const team = [];
+  for (let i = 0; i < 8; i++) team.push({ id: 'e' + i, name: 'D' + i, weeklyHours: 38, role: i < 4 ? 'autista' : 'soccorritore' });
+  const st = makeState(team, {});
+  st.volunteers = { '2026-11-07': { G: { A: 1, S: 1 } } };
+  const res = R.generateMonth(st, 2026, 11);
+  const out = makeState(team, res.assignments);
+  out.volunteers = st.volunteers;
+  assert.equal(R.staffOn(out, '2026-11-07', 'G').length, 0);
+  assert.equal(R.staffOn(out, '2026-11-08', 'G').length, 2);
+});

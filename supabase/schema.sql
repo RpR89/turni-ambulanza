@@ -13,8 +13,8 @@
 --   published  i turni del mese resi pubblici per i dipendenti (copia "fotografata")
 -- Regole:
 --   - ci si può registrare solo con un indirizzo @critn.it (controllo nel database)
---   - chi si registra resta in attesa: referenti e vice li approva l'amministratore,
---     i dipendenti il referente della loro unità (gli invitati dall'amministratore sono già attivi)
+--   - chi si registra da solo è sempre "dipendente" e resta in attesa finché il referente della sua
+--     unità non lo approva; referenti e vice li crea l'amministratore (invito o cambio di ruolo)
 --   - referenti e vice referenti vedono e modificano solo i turni della propria unità
 --   - i dipendenti, dopo l'approvazione del referente, vedono solo i turni pubblicati
 --     e le richieste; inseriscono le proprie richieste entro il giorno limite
@@ -99,8 +99,8 @@ begin
   if unit is not null and not exists (select 1 from public.units where id = unit) then
     unit := null;
   end if;
-  -- Tutti restano in attesa: i dipendenti li approva il referente della loro unità, referenti e vice
-  -- l'amministratore (chi viene invitato dall'amministratore è attivato subito dalla funzione di invito).
+  -- Chi si registra è sempre un dipendente in attesa, qualunque ruolo arrivi dal modulo: referenti e vice
+  -- li nomina l'amministratore (con l'invito la funzione api/admin-invite imposta ruolo e attivazione).
   insert into public.profiles (id, email, first_name, last_name, unit_id, role, active)
   values (
     new.id,
@@ -108,8 +108,7 @@ begin
     left(trim(coalesce(meta ->> 'first_name', '')), 80),
     left(trim(coalesce(meta ->> 'last_name', '')), 80),
     unit,
-    case meta ->> 'role' when 'vice_referente' then 'vice_referente' when 'dipendente' then 'dipendente'
-      else 'referente' end,
+    'dipendente',
     false
   )
   on conflict (id) do nothing;
@@ -401,6 +400,11 @@ begin
     raise exception 'Termine scaduto: le richieste per questo mese si potevano inserire fino al %',
       to_char(public.request_deadline(me.unit_id, month_start), 'DD/MM/YYYY') using errcode = 'check_violation';
   end if;
+  select e into emp from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
+    where d.unit_id = me.unit_id and e ->> 'id' = me.employee_id;
+  if emp is null or not coalesce((emp ->> 'active')::boolean, true) then
+    raise exception 'Il tuo account è sospeso: parlane con il referente' using errcode = 'insufficient_privilege';
+  end if;
   if exists (select 1 from public.published where unit_id = me.unit_id and month = month_key) then
     raise exception 'I turni di questo mese sono già pubblicati: per cambiare chiedi al referente'
       using errcode = 'check_violation';
@@ -418,8 +422,6 @@ begin
       used, public.unit_setting(me.unit_id, 'maxRestRequests', 4) using errcode = 'check_violation';
   end if;
   if p_kind = 'P' then
-    select e into emp from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
-      where d.unit_id = me.unit_id and e ->> 'id' = me.employee_id;
     if not coalesce((emp ->> 'has104')::boolean, false) then
       raise exception 'Non risulti avere diritto ai permessi 104: parlane con il referente' using errcode = 'check_violation';
     end if;
@@ -442,7 +444,7 @@ grant execute on function public.set_request(date, text) to authenticated;
 -- DOPO la tua registrazione, rendi amministratore il tuo utente
 -- (sostituisci l'indirizzo e esegui solo questa riga):
 --
---   update public.profiles set is_admin = true, active = true where email = 'nome.cognome@critn.it';
+--   update public.profiles set is_admin = true, active = true, role = 'referente' where email = 'nome.cognome@critn.it';
 --
 -- Poi gli altri amministratori li nomini dall'app (scheda Amministrazione, casella "Amministratore").
 -- =====================================================================

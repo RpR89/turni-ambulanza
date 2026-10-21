@@ -157,10 +157,27 @@
           return '<td class="cell' + v.cls + (wd >= 5 ? ' weekend' : '') + (wd === 0 ? ' monday' : '') + '"' +
             (v.title ? ' title="' + esc(v.title) + '"' : '') + '>' + v.text + '</td>';
         }).join('') + '</tr>';
-      }).join('') + '</tbody></table></div>' +
-      '<p class="note">G giorno · N notte · F ferie · R riposo · C formazione · A assente. ' +
+      }).join('') + '</tbody>' + volunteersRow(snap, days, shifts) + '</table></div>' +
+      '<p class="note">G giorno · N notte · F ferie · R riposo · C formazione · A assente · V volontari. ' +
       'Per un cambio parla con il referente.</p></section>';
     return h;
+  }
+
+  // Riga dei volontari generici (senza nome) messi dal referente nei turni del mese.
+  function volunteersRow(snap, days, shifts) {
+    var vol = snap.volunteers || {};
+    if (!Object.keys(vol).length) return '';
+    return '<tfoot><tr><th class="name">Volontari</th>' + days.map(function (k) {
+      var day = vol[k] || {}, n = 0, parts = [];
+      Object.keys(day).forEach(function (id) {
+        var a = +day[id].A || 0, r = +day[id].S || 0;
+        n += a + r;
+        parts.push((shifts[id] ? shifts[id].label : id) + ': ' + (a ? a + ' autista' : '') + (a && r ? ', ' : '') +
+          (r ? r + ' soccorritor' + (r === 1 ? 'e' : 'i') : ''));
+      });
+      return '<td class="cov' + (R.weekday(k) === 0 ? ' monday' : '') + '"' + (n ? ' title="' + esc(parts.join(' · ')) + '"' : '') +
+        '>' + (n ? n + 'V' : '') + '</td>';
+    }).join('') + '</tr></tfoot>';
   }
 
   function renderRequests(key, title) {

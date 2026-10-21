@@ -9,12 +9,12 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 ## Cosa fa
 
 - **Accesso utenti** (con il back end attivo):
-  - registrazione con nome, cognome, email, **unità di appartenenza** e **ruolo** (dipendente, referente o vice referente),
+  - registrazione con nome, cognome, email e **unità di appartenenza**: chi si registra è sempre un **dipendente**
+    (referenti e vice li nomina l'amministratore, con l'invito o cambiando il ruolo);
     accettando l'informativa privacy; solo indirizzi **@critn.it** (controllo anche nel database) e conferma via mail;
   - accesso con email e password, recupero della password via mail;
-  - chi si registra da solo resta **in attesa di approvazione**: referenti e vice li approva un amministratore
-    (scheda *Amministrazione*, pulsante **Approva**), i dipendenti il referente della loro unità; chi viene
-    invitato dall'amministratore è già approvato;
+  - chi si registra resta **in attesa di approvazione** del referente della sua unità; chi viene invitato
+    dall'amministratore (con il ruolo scelto) è già approvato;
   - ogni utente vede e modifica solo i turni della **propria unità**, salvati online e condivisi tra
     referente e vice referente; se due persone salvano insieme l'app lo segnala e chiede quale versione tenere;
   - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti (prima quelli da approvare)
@@ -22,7 +22,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     inserimento manuale di utenti con mail di invito;
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 - **Accesso dei dipendenti** (con il back end attivo):
-  - il dipendente si registra con ruolo *Dipendente*; dopo la conferma della mail resta **in attesa** finché il
+  - il dipendente si registra dal sito; dopo la conferma della mail resta **in attesa** finché il
     referente (o il vice) della sua unità non lo approva nella scheda *Dipendenti → Account dei dipendenti*,
     scegliendo la sua riga del tabellone (proposta in automatico se nome e cognome coincidono);
   - il dipendente **non vede i turni in lavorazione**: per ogni mese vede i turni solo dopo che il referente preme
@@ -103,6 +103,10 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 - **Copertura**: sotto il tabellone, una riga per ogni turno di ogni ambulanza con quante persone ci sono
   (2 richieste per turno, modificabile in *Impostazioni*); in rosso se mancano persone o l'autista,
   `–` nei giorni in cui il turno non è previsto.
+- **Volontari generici**: cliccando un numero della copertura si mettono nel turno uno o più volontari senza nome,
+  *autista soccorritore* o *soccorritore* (sotto il numero compare per esempio `2V`). Contano per la copertura e per
+  l'autista richiesto, la proposta automatica non mette dipendenti dove bastano, non hanno ore. In Excel compaiono come
+  `VOL. AUTISTA` / `VOLONTARIO`, nei turni pubblicati in una riga *Volontari*. *Reset completo* li toglie.
 - **Proposta automatica**: riempie i turni scoperti di tutte le ambulanze, nei giorni previsti,
   senza toccare quelli già inseriti.
   Rispetta sempre i vincoli e dà la precedenza a chi è più indietro con il monte ore.
@@ -152,8 +156,9 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   La notte tra venerdì e sabato conta come venerdì, quindi non consuma un weekend;
   la notte tra domenica e lunedì conta come domenica.
   Ferie, malattia, permessi 104, formazione e richieste di non lavorare nel weekend non contano.
-- I dipendenti disattivati (spunta *Attivo* tolta) spariscono dal tabellone e dai controlli,
-  ma i loro turni passati restano salvati.
+- **Sospendere un dipendente** (scheda Dipendenti, *Sospendi* / *Riattiva*): finché è sospeso non compare nel
+  tabellone, nei controlli, nella proposta automatica, in Excel e nei turni pubblicati (i suoi turni restano salvati);
+  con l'accesso utenti attivo il suo account viene bloccato e non può entrare né fare richieste, finché non lo riattivi.
 
 ## Come si usa
 

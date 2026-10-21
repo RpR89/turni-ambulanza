@@ -106,7 +106,13 @@
       };
       var shifts = {};
       Rules.shiftCatalog(state).list.forEach(function (sh) {
-        shifts[sh.id] = byDriverThenOrder(Rules.staffOn(state, k, sh.id)).map(name).slice(0, 3);
+        // prima gli autisti (dipendenti, poi volontari), poi gli altri; i volontari senza nome
+        var staff = byDriverThenOrder(Rules.staffOn(state, k, sh.id));
+        var vol = Rules.volunteersOn(state, k, sh.id);
+        var rep = function (label, n) { var out = []; for (var i = 0; i < n; i++) out.push(label); return out; };
+        var drivers = staff.filter(Rules.isDriver).map(name).concat(rep('VOL. AUTISTA', vol.drivers));
+        var others = staff.filter(function (e) { return !Rules.isDriver(e); }).map(name).concat(rep('VOLONTARIO', vol.rescuers));
+        shifts[sh.id] = drivers.concat(others).slice(0, 3);
       });
       return {
         key: k,

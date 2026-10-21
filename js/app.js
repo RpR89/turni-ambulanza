@@ -20,7 +20,8 @@
       assignments: {},
       locks: {},
       auto: {},
-      reqTags: {}
+      reqTags: {},
+      volunteers: {}
     };
   }
 
@@ -54,6 +55,7 @@
     base.locks = s.locks && typeof s.locks === 'object' ? s.locks : {};
     base.auto = s.auto && typeof s.auto === 'object' ? s.auto : {};
     base.reqTags = s.reqTags && typeof s.reqTags === 'object' ? s.reqTags : {};
+    base.volunteers = s.volunteers && typeof s.volunteers === 'object' ? s.volunteers : {};
     return base;
   }
 
@@ -95,13 +97,13 @@
   // Prima di eliminare turni o ambulanze: si salva anche l'elenco delle ambulanze.
   function snapshotAll() {
     undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto,
-      reqTags: state.reqTags, ambulances: state.settings.ambulances }));
+      reqTags: state.reqTags, volunteers: state.volunteers, ambulances: state.settings.ambulances }));
     if (undoStack.length > 50) undoStack.shift();
   }
 
   function snapshot() {
     undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto,
-      reqTags: state.reqTags }));
+      reqTags: state.reqTags, volunteers: state.volunteers }));
     if (undoStack.length > 50) undoStack.shift();
   }
   function undo() {
@@ -111,6 +113,7 @@
     state.locks = snap.locks || {};
     state.auto = snap.auto || {};
     state.reqTags = snap.reqTags || {};
+    state.volunteers = snap.volunteers || {};
     touchedRequests = [];
     if (snap.ambulances) { state.settings.ambulances = snap.ambulances; renderAll(); }
     save();
@@ -411,15 +414,21 @@
         '</small></th>';
       days.forEach(function (key) {
         var active = sh.days[R.weekday(key)];
-        var staff = R.staffOn(state, key, sh.id);
-        var drv = staff.filter(R.isDriver).length;
+        var cov = R.coverageOf(state, key, sh.id);
+        var have = cov.total, drv = cov.drivers, vol = cov.volunteers;
         var need = active ? crew : 0;
-        var cls = staff.length < need || (staff.length && drv < minDrivers) ? 'under' : staff.length > need ? 'over' : active ? 'ok' : 'off';
-        var tip = staff.map(function (e) { return e.name + (R.isDriver(e) ? ' (autista)' : ''); }).join(', ') || 'Nessuno';
-        if (staff.length && drv < minDrivers) tip += ' — manca l\'autista';
-        if (!active) tip = 'Turno non previsto questo giorno' + (staff.length ? ': ' + tip : '');
-        h += '<td class="cov ' + cls + (R.weekday(key) === 0 ? ' monday' : '') + '" title="' + esc(tip) + '">' +
-          (active || staff.length ? staff.length + (staff.length && drv < minDrivers ? '!' : '') : '–') + '</td>';
+        var cls = have < need || (have && drv < minDrivers) ? 'under' : have > need ? 'over' : active ? 'ok' : 'off';
+        var names = cov.staff.map(function (e) { return e.name + (R.isDriver(e) ? ' (autista)' : ''); });
+        if (vol.drivers) names.push(vol.drivers + ' volontari' + (vol.drivers === 1 ? 'o' : '') + ' autista');
+        if (vol.rescuers) names.push(vol.rescuers + ' volontari' + (vol.rescuers === 1 ? 'o' : '') + ' soccorritor' + (vol.rescuers === 1 ? 'e' : 'i'));
+        var tip = names.join(', ') || 'Nessuno';
+        if (have && drv < minDrivers) tip += ' — manca l\'autista';
+        if (!active) tip = 'Turno non previsto questo giorno' + (have ? ': ' + tip : '');
+        tip += '\nClic: aggiungi o togli un volontario';
+        h += '<td class="cov ' + cls + (vol.total ? ' has-vol' : '') + (R.weekday(key) === 0 ? ' monday' : '') +
+          '" data-cov-date="' + key + '" data-cov-shift="' + esc(sh.id) + '" title="' + esc(tip) + '">' +
+          (active || have ? have + (have && drv < minDrivers ? '!' : '') : '–') +
+          (vol.total ? '<small class="vol-mark">' + vol.total + 'V</small>' : '') + '</td>';
       });
       h += '<td colspan="7"></td></tr>';
     });
@@ -621,6 +630,72 @@
       renderPublish();
       toast('Pubblicazione di ' + title + ' ritirata.');
     }).catch(function (e) { toast('Non riuscito: ' + (e.message || e), true); });
+  }
+
+  // ---------- Volontari generici nei turni ----------
+
+  var volCell = null; // { key, shiftId } del turno aperto nel riquadro dei volontari
+
+  function setVolunteers(key, shiftId, kind, delta) {
+    var cur = R.volunteersOn(state, key, shiftId);
+    var next = { A: cur.drivers, S: cur.rescuers };
+    next[kind] = Math.max(0, Math.min(9, next[kind] + delta));
+    if (next[kind] === (kind === 'A' ? cur.drivers : cur.rescuers)) return;
+    snapshot();
+    if (!state.volunteers[key]) state.volunteers[key] = {};
+    if (next.A || next.S) state.volunteers[key][shiftId] = next;
+    else delete state.volunteers[key][shiftId];
+    if (!Object.keys(state.volunteers[key]).length) delete state.volunteers[key];
+    save();
+    renderMonth();
+    renderVolPop();
+  }
+
+  function openVolPop(td) {
+    volCell = { key: td.getAttribute('data-cov-date'), shiftId: td.getAttribute('data-cov-shift') };
+    var pop = $('#vol-pop');
+    renderVolPop();
+    pop.hidden = false;
+    var r = td.getBoundingClientRect(), w = pop.offsetWidth, hgt = pop.offsetHeight;
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    var top = r.top - hgt - 6 < 8 ? r.bottom + 6 : r.top - hgt - 6;
+    pop.style.left = (left + window.scrollX) + 'px';
+    pop.style.top = (top + window.scrollY) + 'px';
+  }
+
+  function closeVolPop() { volCell = null; $('#vol-pop').hidden = true; }
+
+  function renderVolPop() {
+    if (!volCell) return;
+    var sh = R.shiftInfo(state, volCell.shiftId);
+    if (!sh) return closeVolPop();
+    var v = R.volunteersOn(state, volCell.key, volCell.shiftId);
+    function row(kind, label, n) {
+      return '<div class="vol-row"><span>' + label + '</span><button type="button" data-vol="' + kind + '" data-d="-1"' +
+        (n ? '' : ' disabled') + ' aria-label="Togli">−</button><b>' + n + '</b>' +
+        '<button type="button" data-vol="' + kind + '" data-d="1" aria-label="Aggiungi">+</button></div>';
+    }
+    $('#vol-pop').innerHTML = '<div class="vol-head"><b>Volontari</b> · ' + esc(R.shiftText(sh)) + ' del ' +
+      fmtDate(volCell.key) + '<button type="button" class="ghost" data-vol-close aria-label="Chiudi">✕</button></div>' +
+      row('A', 'Autista soccorritore', v.drivers) + row('S', 'Soccorritore', v.rescuers) +
+      '<p class="note">Persone senza nome che coprono il turno: contano per la copertura (e per l\'autista), non per le ore dei dipendenti.</p>';
+  }
+
+  function initVolunteers() {
+    $('#grid').addEventListener('click', function (ev) {
+      var td = ev.target.closest('td[data-cov-date]');
+      if (td) openVolPop(td);
+    });
+    $('#vol-pop').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (ev.target.closest('[data-vol-close]')) return closeVolPop();
+      var b = ev.target.closest('button[data-vol]');
+      if (b && volCell) setVolunteers(volCell.key, volCell.shiftId, b.getAttribute('data-vol'), +b.getAttribute('data-d'));
+    });
+    document.addEventListener('click', function (ev) {
+      if (volCell && !ev.target.closest('#vol-pop') && !ev.target.closest('td[data-cov-date]')) closeVolPop();
+    });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && volCell) closeVolPop(); });
   }
 
   // ---------- Inserimento nel tabellone ----------
@@ -1001,13 +1076,14 @@
 
   function clearMonth() {
     if (!confirm('RESET COMPLETO di ' + MONTHS[view.m - 1] + ' ' + view.y + '?\n' +
-      'Vengono cancellati TUTTI i turni, anche quelli inseriti a mano, e ferie, malattie, permessi, ' +
+      'Vengono cancellati TUTTI i turni, anche quelli inseriti a mano, i volontari, ferie, malattie, permessi, ' +
       'richieste di riposo e formazione.\nRestano solo le caselle bloccate 🔒. Puoi annullare con "Annulla".')) return;
     snapshot();
     var days = R.monthDays(view.y, view.m);
     Object.keys(state.assignments).forEach(function (id) {
       days.forEach(function (k) { if (!R.isLocked(state, id, k)) setCell(id, k, ''); });
     });
+    days.forEach(function (k) { delete state.volunteers[k]; });
     save();
     renderMonth();
     toast('Reset completo fatto. Puoi annullare con "Annulla".');
@@ -1077,11 +1153,11 @@
   function renderEmployees() {
     var short = window.ExportXlsx.defaultShortNames(state.employees);
     var h = '<thead><tr><th></th><th>Nome</th><th title="Come compare nel tabellone esportato in Excel">Nome nel tabellone</th><th>Qualifica</th><th>Contratto</th><th>Monte ore ' + MONTHS[view.m - 1].toLowerCase() +
-      '</th><th>Legge 104</th><th>Attivo</th><th></th></tr></thead><tbody>';
+      '</th><th>Legge 104</th><th>Stato</th><th></th></tr></thead><tbody>';
     if (!state.employees.length) h += '<tr><td colspan="9" class="empty">Nessun dipendente inserito.</td></tr>';
     state.employees.forEach(function (e, i) {
       var std = e.weeklyHours === 38 || e.weeklyHours === 24;
-      h += '<tr data-id="' + esc(e.id) + '">' +
+      h += '<tr data-id="' + esc(e.id) + '"' + (e.active ? '' : ' class="suspended"') + '>' +
         '<td class="order"><button data-act="up" title="Sposta su"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" title="Sposta giù"' + (i === state.employees.length - 1 ? ' disabled' : '') + '>▼</button></td>' +
         '<td><input data-field="name" value="' + esc(e.name) + '"></td>' +
@@ -1099,7 +1175,9 @@
         '<td>' + fmt(R.monthlyTarget(e, view.y, view.m)) + ' h</td>' +
         '<td><label class="check"><input type="checkbox" data-field="has104"' + (e.has104 ? ' checked' : '') +
         '> Sì</label></td>' +
-        '<td><input type="checkbox" data-field="active"' + (e.active ? ' checked' : '') + '></td>' +
+        '<td>' + (e.active ? '<span class="badge good">attivo</span> <button data-act="suspend" title="Non compare più nel tabellone' +
+          (online ? ' e non può accedere all\'app' : '') + ' finché non lo riattivi">Sospendi</button>'
+          : '<span class="badge">sospeso</span> <button data-act="resume" class="primary">Riattiva</button>') + '</td>' +
         '<td><button data-act="delete" class="danger">Elimina</button></td></tr>';
     });
     $('#emp-table').innerHTML = h + '</tbody>';
@@ -1134,7 +1212,6 @@
       var f = ev.target.getAttribute('data-field');
       if (f === 'name') e.name = ev.target.value.trim() || e.name;
       if (f === 'shortName') e.shortName = ev.target.value.trim().toUpperCase();
-      if (f === 'active') e.active = ev.target.checked;
       if (f === 'has104') e.has104 = ev.target.checked;
       if (f === 'role') e.role = ev.target.value;
       if (f === 'contract') {
@@ -1157,9 +1234,10 @@
       var id = tr.getAttribute('data-id');
       var idx = state.employees.indexOf(empById(id));
       var act = btn.getAttribute('data-act');
+      if (act === 'suspend' || act === 'resume') return suspendEmployee(empById(id), act === 'suspend');
       if (act === 'delete') {
         if (!confirm('Eliminare ' + state.employees[idx].name + ' e tutti i suoi turni?\n' +
-          'Se ha solo smesso di lavorare, togli la spunta "Attivo" per conservare lo storico.')) return;
+          'Se ha solo smesso di lavorare (o è assente a lungo), usa "Sospendi": conservi lo storico.')) return;
         state.employees.splice(idx, 1);
         delete state.assignments[id];
       } else {
@@ -1171,6 +1249,26 @@
       save();
       renderAll();
     });
+  }
+
+  // Sospeso: non compare nel tabellone (né nella proposta, nei controlli, in Excel e nei turni pubblicati)
+  // e, con l'accesso utenti, il suo account non può entrare finché non lo riattivi.
+  function suspendEmployee(e, suspend) {
+    if (suspend && !confirm('Sospendere ' + e.name + '?\nNon comparirà più nel tabellone' +
+      (online ? ' e non potrà accedere all\'app' : '') + ' finché non lo riattivi. I suoi turni già inseriti restano salvati.')) return;
+    e.active = !suspend;
+    save();
+    renderAll();
+    if (online && online.setEmployeeAccess) {
+      online.setEmployeeAccess(e.id, !suspend).then(function (n) {
+        toast(e.name + (suspend ? ' sospeso' : ' riattivato') + (n ? (suspend ? ': non può più accedere.' : ': può di nuovo accedere.') : '.'));
+      }).catch(function (err) {
+        toast(e.name + (suspend ? ' sospeso nel tabellone, ma il suo account non è stato bloccato: ' : ' riattivato nel tabellone, ma il suo account non è stato riattivato: ') +
+          (err.message || err) + '. Riprova o usa la scheda Account dei dipendenti.', true);
+      });
+    } else {
+      toast(e.name + (suspend ? ' sospeso.' : ' riattivato.'));
+    }
   }
 
   // ---------- Impostazioni ----------
@@ -1525,6 +1623,7 @@
     });
 
     initGridEvents();
+    initVolunteers();
     initEmployees();
     initSettings();
     initAmbulances();

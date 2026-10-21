@@ -62,8 +62,24 @@
           })
         };
       }),
-      cells: cells
+      cells: cells,
+      volunteers: monthVolunteers(state, days)
     };
+  }
+
+  // Volontari generici del mese: { giorno: { turno: { A, S } } } (solo i turni che ne hanno).
+  function monthVolunteers(state, days) {
+    var out = {};
+    days.forEach(function (k) {
+      var day = (state.volunteers || {})[k];
+      if (!day) return;
+      Object.keys(day).forEach(function (id) {
+        var v = R.volunteersOn(state, k, id);
+        if (!v.total || !R.shiftInfo(state, id)) return;
+        (out[k] = out[k] || {})[id] = { A: v.drivers, S: v.rescuers };
+      });
+    });
+    return out;
   }
 
   // Confronto indipendente dall'ordine delle chiavi (il database le riordina).

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Turni">
-  <link rel="stylesheet" href="css/style.css?v=2.5">
+  <link rel="stylesheet" href="css/style.css?v=3.0">
 </head>
 <body>
   <header class="topbar no-print">
@@ -57,9 +57,11 @@
         <label>Unità di appartenenza <select name="unit" id="su-unit" required></select></label>
         <label>Ruolo
           <select name="role">
+            <option value="dipendente">Dipendente</option>
             <option value="referente">Referente</option>
             <option value="vice_referente">Vice referente</option>
           </select>
+          <small>I dipendenti possono entrare dopo l'approvazione del referente della loro unità.</small>
         </label>
         <div class="auth-row">
           <label>Password <input name="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -100,6 +102,7 @@
           <h2 id="month-title"></h2>
           <button id="next-month" title="Mese successivo">›</button>
           <button id="today" class="ghost">Oggi</button>
+          <span id="pub-status" class="pub-status" hidden></span>
           <label id="amb-view" class="amb-view" hidden>Tabellone
             <select id="amb-view-sel" aria-label="Ambulanza del tabellone da modificare"></select>
           </label>
@@ -134,6 +137,8 @@
           <button id="btn-clear-month" class="danger" title="Cancella tutto il mese, anche i turni scritti a mano, tranne le caselle bloccate">Reset completo</button>
           <button id="btn-print">Stampa</button>
           <button id="btn-excel" title="Scarica il tabellone turni in Excel (settimane che iniziano con un lunedì del mese)">Esporta Excel</button>
+          <button id="btn-publish" class="publish" hidden title="I dipendenti vedono i turni del mese così come sono adesso">📢 Pubblica turni</button>
+          <button id="btn-unpublish" hidden title="I dipendenti non vedono più i turni di questo mese">Ritira pubblicazione</button>
           </div>
         </div>
       </div>
@@ -193,6 +198,13 @@
 
     <!-- ================= DIPENDENTI ================= -->
     <section id="tab-dipendenti" class="panel">
+      <div class="card" id="accounts-card" hidden>
+        <h3>Account dei dipendenti <small>(registrati con la mail @critn.it: approvali e scegli la loro riga nel tabellone)</small></h3>
+        <table class="list" id="accounts-table"></table>
+        <p class="note">Un dipendente approvato vede i turni del mese solo dopo che li pubblichi (📢 Pubblica turni,
+          nella scheda Turni) e, fino al giorno limite indicato nelle Impostazioni, può inserire le sue richieste di
+          riposo (e di permesso 104, se ne ha diritto). Le richieste compaiono nel tabellone sottolineate.</p>
+      </div>
       <div class="card">
         <h3>Aggiungi dipendente</h3>
         <form id="emp-form" class="row-form">
@@ -250,7 +262,10 @@
       </div>
       <div class="card">
         <h3>Utenti</h3>
-        <p class="note">Le modifiche si salvano subito. Togliendo "Attivo" l'utente non può più vedere né modificare i turni.</p>
+        <p class="note">Le modifiche si salvano subito. Chi si registra da solo resta in attesa: i referenti e i vice li
+          approvi tu con <b>Approva</b>, i dipendenti li approva il referente della loro unità (scheda Dipendenti).
+          Togliendo "Attivo" l'utente non può più entrare. Con la casella "Amministratore" nomini altri amministratori
+          (o togli i diritti); non puoi toglierli a te stesso.</p>
         <table id="users-table" class="list"></table>
       </div>
     </section>
@@ -287,6 +302,8 @@
           <label>Massimo weekend al mese (preferenza) <input type="number" name="maxWeekendsPerMonth" min="0" step="1"></label>
           <label>Ore di un permesso 104 <input type="number" name="perm104Hours" min="0" step="0.1"></label>
           <label>Permessi 104 al mese <input type="number" name="perm104PerMonth" min="0" step="1"></label>
+          <label>Richieste di riposo al mese per dipendente <input type="number" name="maxRestRequests" min="0" step="1"></label>
+          <label>Giorno limite per le richieste (del mese prima) <input type="number" name="requestDeadlineDay" min="1" max="31" step="1"></label>
           <label class="wide">Titolo del tabellone Excel <input type="text" name="tabelloneTitle"></label>
           <button class="primary">Salva</button>
         </form>
@@ -320,6 +337,8 @@
         </div>
       </div>
     </section>
+    <!-- ================= DIPENDENTE (solo con l'accesso utenti) ================= -->
+    <section id="staff-view" class="staff-view" hidden></section>
   </main>
 
   <div id="cookie-notice" class="cookie-notice no-print" hidden>
@@ -329,16 +348,18 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 2.5 (anche da cellulare)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.0 (accesso dei dipendenti)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/config.js?v=2.5"></script>
-  <script src="js/vendor/supabase.min.js?v=2.5"></script>
-  <script src="js/rules.js?v=2.5"></script>
-  <script src="js/logo.js?v=2.5"></script>
-  <script src="js/export-xlsx.js?v=2.5"></script>
-  <script src="js/auth.js?v=2.5"></script>
-  <script src="js/app.js?v=2.5"></script>
+  <script src="js/config.js?v=3.0"></script>
+  <script src="js/vendor/supabase.min.js?v=3.0"></script>
+  <script src="js/rules.js?v=3.0"></script>
+  <script src="js/requests.js?v=3.0"></script>
+  <script src="js/logo.js?v=3.0"></script>
+  <script src="js/export-xlsx.js?v=3.0"></script>
+  <script src="js/staff.js?v=3.0"></script>
+  <script src="js/auth.js?v=3.0"></script>
+  <script src="js/app.js?v=3.0"></script>
 </body>
 </html>

@@ -495,3 +495,39 @@ body.auth-mode .topbar, body.auth-mode main, body.auth-mode footer.version { dis
   .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
   .cookie-notice { bottom: calc(76px + env(safe-area-inset-bottom)); left: 8px; right: 8px; }
 }
+
+/* ---------- Richieste dei dipendenti e pubblicazione ---------- */
+
+.pub-status { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 12px; white-space: nowrap; }
+.pub-status.off { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+.pub-status.on { background: var(--good-bg); color: var(--good); }
+.pub-status.stale { background: var(--warn-bg); color: var(--warn); }
+button.publish { font-weight: 600; }
+.grid td.cell.req { text-decoration: underline wavy var(--accent); text-underline-offset: 3px; }
+.link-btn { padding: 0 6px; margin-left: 6px; font-size: 12px; color: var(--accent); background: transparent; }
+.tab-badge {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px;
+  background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 18px; text-align: center;
+}
+.cell-A { background: var(--bg) !important; color: var(--muted); }
+
+/* Schermata del dipendente */
+body.staff-mode .tabs, body.staff-mode main > .panel { display: none !important; }
+.staff-view { max-width: 100%; }
+.staff-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; }
+.staff-head .month-nav h2 { min-width: 170px; }
+.staff-view > .pub-status { display: inline-block; margin: 0 0 12px; white-space: normal; }
+.staff-alert { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); }
+.staff-grid tr.mine th.name, .staff-grid tr.mine td.cell:not([class*="cell-"]) { background: var(--g-bg); }
+.staff-grid td.cell { cursor: default; }
+.staff-grid td.cell.editable { cursor: pointer; }
+.staff-grid td.cell.editable:hover, .staff-grid td.cell.editable:focus { outline: 2px solid var(--text); outline-offset: -2px; }
+.req-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.req-tools .tool { min-height: 40px; }
+.my-shifts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+.my-shifts li { display: flex; align-items: center; gap: 8px; }
+.my-shifts .when { width: 52px; color: var(--muted); font-size: 13px; }
+.my-shifts .cell { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 30px; padding: 0 4px;
+  border-radius: 6px; font-weight: 700; }
+.my-shifts .cell small { font-size: 9px; margin-left: 1px; }
+.my-shifts .what { font-size: 13px; }

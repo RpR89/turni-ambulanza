@@ -42,6 +42,10 @@ test('invito: l\'amministratore inserisce un utente @critn.it', () => withSupaba
   assert.equal(sent.email, 'luca.bianchi@critn.it');
   assert.deepEqual(sent.data, { first_name: 'Luca', last_name: 'Bianchi', unit_id: UNIT, role: 'referente' });
   assert.equal(inv.opts.headers.Authorization, 'Bearer service');
+  // l'invitato è attivo subito (chi si registra da solo invece resta in attesa)
+  const act = calls.find(c => c.opts.method === 'PATCH');
+  assert.match(act.url, /\/rest\/v1\/profiles\?id=eq\.new$/);
+  assert.deepEqual(JSON.parse(act.opts.body), { active: true });
 }));
 
 test('invito: rifiuta domini diversi da @critn.it e dati mancanti', () => withSupabase({}, async (calls) => {

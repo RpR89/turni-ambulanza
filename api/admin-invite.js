@@ -78,6 +78,15 @@ async function handler(req, res) {
     if (/already|registered|exists/i.test(msg)) msg = 'Esiste già un utente con questo indirizzo';
     return send(res, inv.status === 422 ? 409 : 400, { error: msg });
   }
+  // Chi si registra da solo resta in attesa; chi invita l'amministratore è già approvato.
+  const user = await inv.json().catch(() => ({}));
+  if (user && user.id) {
+    await fetch(url + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id), {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, admin),
+      body: JSON.stringify({ active: true })
+    });
+  }
   return send(res, 200, { ok: true });
 }
 

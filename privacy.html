@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Informativa privacy e cookie · Turni Ambulanza</title>
-  <link rel="stylesheet" href="css/style.css?v=2.5">
+  <link rel="stylesheet" href="css/style.css?v=3.0">
   <style>
     .doc { max-width: 820px; margin: 0 auto; padding: 24px 20px 48px; line-height: 1.55; }
     .doc h1 { font-size: 24px; margin: 0 0 4px; }
@@ -27,7 +27,7 @@
     <h1>Informativa sul trattamento dei dati personali e sui cookie</h1>
     <p>Applicazione web "Turni Ambulanza" — ai sensi degli artt. 13 e 14 del Regolamento (UE) 2016/679 (GDPR)
       e del D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018.<br>
-      Ultimo aggiornamento: 16 ottobre 2026.</p>
+      Ultimo aggiornamento: 21 ottobre 2026.</p>
 
     <p class="draft"><b>Bozza da completare e far verificare</b> dal Responsabile della Protezione dei Dati (DPO) del
       Comitato prima della pubblicazione: le parti <span class="todo">evidenziate</span> vanno compilate.</p>
@@ -42,9 +42,10 @@
     <h2>2. Quali dati trattiamo</h2>
     <table>
       <tr><th>Categoria</th><th>Dati</th><th>Da chi li riceviamo</th></tr>
-      <tr><td>Dati dell'account degli utenti dell'applicazione (referenti e vice referenti)</td>
+      <tr><td>Dati dell'account degli utenti dell'applicazione (referenti, vice referenti e dipendenti)</td>
         <td>nome, cognome, indirizzo e-mail istituzionale @critn.it, unità di appartenenza, ruolo,
-          password (conservata solo in forma cifrata), data di accettazione dell'informativa</td>
+          password (conservata solo in forma cifrata), data di accettazione dell'informativa; per i dipendenti
+          anche lo stato di approvazione e il collegamento alla propria riga del tabellone</td>
         <td>dall'interessato al momento della registrazione, oppure dall'amministratore che lo inserisce</td></tr>
       <tr><td>Dati tecnici di accesso</td>
         <td>data e ora degli accessi, indirizzo IP, tipo di browser, registri di sicurezza del servizio di autenticazione</td>
@@ -53,10 +54,15 @@
         <td>nome e cognome, qualifica (autista soccorritore / soccorritore), orario contrattuale, turni assegnati,
           ore lavorate, ferie, formazione, richieste di riposo, <b>assenze per malattia e permessi ex Legge 104/1992</b></td>
         <td>dai referenti e vice referenti che compilano i turni</td></tr>
+      <tr><td>Richieste dei dipendenti</td>
+        <td>giorni di riposo richiesti e, per chi ne ha diritto, giorni di permesso ex Legge 104/1992 richiesti,
+          con data e ora dell'inserimento</td>
+        <td>dal dipendente stesso, tramite l'applicazione</td></tr>
     </table>
     <p>Le assenze per malattia e i permessi ex Legge 104/1992 possono rivelare informazioni relative alla salute
       (categorie particolari di dati, art. 9 GDPR): nell'applicazione compaiono solo come codice ("M", "104"),
-      senza diagnosi né documentazione sanitaria.</p>
+      senza diagnosi né documentazione sanitaria, e solo a referenti e vice referenti. Ai colleghi questi giorni
+      compaiono soltanto come assenza generica ("A"), sia nei turni pubblicati sia nell'elenco delle richieste.</p>
 
     <h2>3. Finalità e basi giuridiche</h2>
     <table>
@@ -79,7 +85,11 @@
 
     <h2>5. Chi può vedere i dati</h2>
     <ul>
-      <li>Ogni referente e vice referente vede soltanto i turni della propria unità di appartenenza.</li>
+      <li>Ogni referente e vice referente vede soltanto i turni della propria unità di appartenenza e gli account
+        dei dipendenti della stessa unità, che approva.</li>
+      <li>I dipendenti della stessa unità vedono i turni del mese solo dopo che il referente li ha pubblicati
+        (nome e cognome dei colleghi, turni, ferie, riposi, formazione e assenze senza motivo) e, prima della
+        pubblicazione, le richieste di riposo dei colleghi; non vedono i turni in preparazione.</li>
       <li>L'amministratore dell'applicazione, designato dal Titolare, gestisce unità e utenti e può accedere ai turni
         di tutte le unità.</li>
       <li>Fornitori che ospitano l'applicazione, nominati Responsabili del trattamento (art. 28 GDPR):
@@ -135,7 +145,7 @@
 
     <p style="margin-top: 32px"><a href="index.html">← Torna all'applicazione</a></p>
   </main>
-  <script src="js/logo.js?v=2.5"></script>
+  <script src="js/logo.js?v=3.0"></script>
   <script>
     document.getElementById('logo').src = 'data:image/png;base64,' + window.LOGO_PNG_BASE64;
   </script>

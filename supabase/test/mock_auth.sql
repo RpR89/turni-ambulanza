@@ -10,7 +10,9 @@ create table auth.users (
   email text,
   raw_user_meta_data jsonb
 );
+-- Come su Supabase: l'utente dalla variabile impostata nei test o dal token letto da PostgREST.
 create function auth.uid() returns uuid language sql stable as $$
-  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+  select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
+                  nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::uuid
 $$;
 grant execute on function auth.uid() to anon, authenticated;

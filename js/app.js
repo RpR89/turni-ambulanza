@@ -19,7 +19,8 @@
       employees: [],
       assignments: {},
       locks: {},
-      auto: {}
+      auto: {},
+      reqTags: {}
     };
   }
 
@@ -52,6 +53,7 @@
     base.assignments = s.assignments && typeof s.assignments === 'object' ? s.assignments : {};
     base.locks = s.locks && typeof s.locks === 'object' ? s.locks : {};
     base.auto = s.auto && typeof s.auto === 'object' ? s.auto : {};
+    base.reqTags = s.reqTags && typeof s.reqTags === 'object' ? s.reqTags : {};
     return base;
   }
 
@@ -78,6 +80,7 @@
   var persistHook = null;
 
   function save() {
+    if (touchedRequests.length) setTimeout(askRejectRequests, 0);
     if (persistHook) return persistHook(state);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -92,12 +95,13 @@
   // Prima di eliminare turni o ambulanze: si salva anche l'elenco delle ambulanze.
   function snapshotAll() {
     undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto,
-      ambulances: state.settings.ambulances }));
+      reqTags: state.reqTags, ambulances: state.settings.ambulances }));
     if (undoStack.length > 50) undoStack.shift();
   }
 
   function snapshot() {
-    undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto }));
+    undoStack.push(JSON.stringify({ assignments: state.assignments, locks: state.locks, auto: state.auto,
+      reqTags: state.reqTags }));
     if (undoStack.length > 50) undoStack.shift();
   }
   function undo() {
@@ -106,6 +110,8 @@
     state.assignments = snap.assignments;
     state.locks = snap.locks || {};
     state.auto = snap.auto || {};
+    state.reqTags = snap.reqTags || {};
+    touchedRequests = [];
     if (snap.ambulances) { state.settings.ambulances = snap.ambulances; renderAll(); }
     save();
     renderMonth();
@@ -189,6 +195,10 @@
 
   // Scrittura a mano: la casella non conta più come inserita dalla proposta automatica.
   function setCell(empId, key, entry) {
+    var tag = online && O.tagOf(state, empId, key);
+    if (tag && R.codeOf(entry) !== tag && !touchedRequests.some(function (t) { return t.empId === empId && t.key === key; })) {
+      touchedRequests.push({ empId: empId, key: key });
+    }
     if (!state.assignments[empId]) state.assignments[empId] = {};
     if (entry) state.assignments[empId][key] = entry;
     else delete state.assignments[empId][key];
@@ -294,7 +304,8 @@
     }
     $all('.max-week').forEach(function (el) { el.textContent = state.settings.maxWeeklyHours; });
 
-    var issues = R.validateMonth(state, view.y, view.m);
+    var issues = R.validateMonth(state, view.y, view.m).concat(requestIssues());
+    renderPublish();
     $('#btn-lock-month').textContent = monthLocked() ? '🔓 Sblocca mese' : '🔒 Blocca mese';
     renderGrid(issues);
     renderWeeks();
@@ -368,7 +379,9 @@
           tips.push('Altre ambulanze: ' + oth.map(function (id) { return R.shiftText(R.shiftInfo(state, id)); }).join(', '));
         }
         var wd = R.weekday(key);
-        var cls = 'cell' + cellClass(entry, ambId) + (wd >= 5 ? ' weekend' : '') +
+        var fromReq = online && O.tagOf(state, e.id, key) && O.tagOf(state, e.id, key) === R.codeOf(entry);
+        if (fromReq) tips.push('Richiesta del dipendente');
+        var cls = 'cell' + cellClass(entry, ambId) + (fromReq ? ' req' : '') + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
           (R.isLocked(state, e.id, key) ? ' locked' : '') + (cellAuto(e.id, key, ambId) ? ' auto' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
@@ -478,7 +491,9 @@
     softs.forEach(function (i) {
       var e = empById(i.empId);
       h += '<li class="err soft" data-emp="' + esc(i.empId) + '" data-date="' + i.dates[0] + '">' +
-        '<b>' + esc(e ? e.name : '?') + '</b>: ' + esc(prettyDates(i.message)) + '</li>';
+        '<b>' + esc(e ? e.name : '?') + '</b>: ' + esc(prettyDates(i.message)) +
+        (i.requestId ? ' <button type="button" class="link-btn" data-reject="' + esc(i.requestId) + '">Rifiuta la richiesta</button>' : '') +
+        '</li>';
     });
     function group(list, label, cls) {
       if (!list.length) return '';
@@ -490,6 +505,122 @@
     h += group(extra, 'turni con personale in eccesso', 'info');
     if (!h) h = '<li class="okmsg">Tutto a posto: vincoli e preferenze rispettati, turni coperti.</li>';
     $('#issues').innerHTML = h;
+  }
+
+  // ---------- Richieste dei dipendenti e pubblicazione (solo con l'accesso utenti) ----------
+
+  var O = window.Online;
+  var online = null;          // { requests, published, publish, unpublish, rejectRequests } da auth.js
+  var reqConflicts = [];      // richieste che non entrano perché c'è già un turno scritto a mano
+  var touchedRequests = [];   // caselle "da richiesta" cambiate a mano: si chiede se rifiutarle
+
+  var KIND_TEXT = { R: 'riposo', P: 'permesso 104' };
+
+  function applyRequests(list, quiet) {
+    var res = O.syncRequests(state, list || []);
+    reqConflicts = res.conflicts;
+    if (res.changed) save();
+    if (!quiet && (res.added || res.removed)) {
+      toast('Richieste dei dipendenti: ' + (res.added ? res.added + ' nuove' : '') +
+        (res.added && res.removed ? ', ' : '') + (res.removed ? res.removed + ' tolte' : '') + '.');
+    }
+  }
+
+  function requestIssues() {
+    if (!online) return [];
+    var days = R.monthDays(view.y, view.m);
+    return reqConflicts.filter(function (c) { return days.indexOf(c.day) >= 0; }).map(function (c) {
+      var labels = c.shifts.map(function (id) { return R.shiftText(R.shiftInfo(state, id)); }).join(' + ');
+      return {
+        level: 'soft', type: 'request', empId: c.empId, dates: [c.day], requestId: c.request.id,
+        message: 'chiede ' + KIND_TEXT[c.kind] + ' il ' + c.day + (labels ? ' ma ha già il turno ' + labels : '') +
+          (R.isLocked(state, c.empId, c.day) ? ' (casella bloccata)' : '') + ': togli il turno o rifiuta la richiesta'
+      };
+    });
+  }
+
+  function rejectRequests(ids) {
+    online.rejectRequests(ids).then(function (list) {
+      online.requests = list;
+      applyRequests(list, true);
+      renderMonth();
+      toast(ids.length === 1 ? 'Richiesta rifiutata.' : ids.length + ' richieste rifiutate.');
+    }).catch(function (e) { toast('Richiesta non rifiutata: ' + (e.message || e), true); });
+  }
+
+  // Il referente ha cambiato a mano caselle che venivano da una richiesta: le rifiuta?
+  function askRejectRequests() {
+    var touched = touchedRequests;
+    touchedRequests = [];
+    if (!online) return;
+    var ids = [];
+    touched.forEach(function (t) {
+      if (R.codeOn(state, t.empId, t.key) === O.tagOf(state, t.empId, t.key)) return; // rimessa com'era
+      (online.requests || []).forEach(function (r) {
+        if (r.employee_id === t.empId && r.day === t.key) ids.push(r.id);
+      });
+    });
+    if (!ids.length) return;
+    if (confirm('Hai cambiato ' + (ids.length === 1 ? 'una casella che era una richiesta' : ids.length +
+      ' caselle che erano richieste') + ' di riposo o 104 di un dipendente.\n\nOK = rifiuta ' +
+      (ids.length === 1 ? 'la richiesta' : 'le richieste') + ' (viene cancellata, il dipendente non la vede più)\n' +
+      'Annulla = resta in sospeso, segnalata nei Controlli')) {
+      rejectRequests(ids);
+    } else {
+      applyRequests(online.requests, true);
+      renderMonth();
+    }
+  }
+
+  function fmtDateTime(iso) {
+    var d = new Date(iso);
+    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ' alle ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function renderPublish() {
+    var box = $('#pub-status'), pub = $('#btn-publish'), unpub = $('#btn-unpublish');
+    if (!online) { box.hidden = pub.hidden = unpub.hidden = true; return; }
+    var row = online.published[O.monthKey(view.y, view.m)];
+    box.hidden = pub.hidden = false;
+    unpub.hidden = !row;
+    if (!row) {
+      box.textContent = 'Turni non pubblicati';
+      box.className = 'pub-status off';
+      box.title = 'I dipendenti vedono solo le richieste di riposo e 104 di questo mese';
+      pub.textContent = '📢 Pubblica turni';
+      return;
+    }
+    var same = O.sameSnapshot(row.data, O.buildSnapshot(state, view.y, view.m));
+    box.textContent = 'Pubblicati il ' + fmtDateTime(row.published_at) + (same ? '' : ' · modifiche non pubblicate');
+    box.className = 'pub-status ' + (same ? 'on' : 'stale');
+    box.title = same ? 'I dipendenti vedono i turni di questo mese' :
+      'I dipendenti vedono la versione pubblicata: usa "Aggiorna pubblicazione" per mostrare le ultime modifiche';
+    pub.textContent = '📢 Aggiorna pubblicazione';
+  }
+
+  function publishMonth() {
+    var key = O.monthKey(view.y, view.m), title = MONTHS[view.m - 1] + ' ' + view.y;
+    var errors = R.validateMonth(state, view.y, view.m).filter(function (i) { return i.level === 'error'; }).length;
+    if (!confirm((online.published[key] ? 'Aggiornare i turni pubblicati di ' : 'Pubblicare i turni di ') + title + '?\n' +
+      'Tutti i dipendenti dell\'unità li vedranno così come sono adesso (malattia e 104 compaiono come "assente").' +
+      (errors ? '\n\nATTENZIONE: nel mese ci sono ancora ' + errors + ' errori.' : '') +
+      '\nDopo la pubblicazione i dipendenti non possono più cambiare le richieste di questo mese.')) return;
+    online.publish(key, O.buildSnapshot(state, view.y, view.m)).then(function (row) {
+      online.published[key] = row;
+      renderPublish();
+      toast('Turni di ' + title + ' pubblicati.');
+    }).catch(function (e) { toast('Pubblicazione non riuscita: ' + (e.message || e), true); });
+  }
+
+  function unpublishMonth() {
+    var key = O.monthKey(view.y, view.m), title = MONTHS[view.m - 1] + ' ' + view.y;
+    if (!confirm('Ritirare la pubblicazione di ' + title + '?\nI dipendenti non vedranno più i turni di questo mese.')) return;
+    online.unpublish(key).then(function () {
+      delete online.published[key];
+      renderPublish();
+      toast('Pubblicazione di ' + title + ' ritirata.');
+    }).catch(function (e) { toast('Non riuscito: ' + (e.message || e), true); });
   }
 
   // ---------- Inserimento nel tabellone ----------
@@ -556,7 +687,9 @@
     var entry = getEntry(td.getAttribute('data-emp'), td.getAttribute('data-date'));
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
     var amb = viewAmb();
-    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?cell-ghost| ?ghost-[GN]| ?locked| ?auto/g, '') + cellClass(entry, amb) +
+    var fromReq = online && O.tagOf(state, emp, key) && O.tagOf(state, emp, key) === R.codeOf(entry);
+    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?cell-ghost| ?ghost-[GN]| ?locked| ?auto| ?req\b/g, '') +
+      cellClass(entry, amb) + (fromReq ? ' req' : '') +
       (R.isLocked(state, emp, key) ? ' locked' : '') + (cellAuto(emp, key, amb) ? ' auto' : '');
     td.innerHTML = cellHtml(entry, amb);
   }
@@ -667,6 +800,13 @@
     });
 
     $('#issues').addEventListener('click', function (ev) {
+      var rej = ev.target.closest('[data-reject]');
+      if (rej) {
+        var item = requestIssues().filter(function (i) { return String(i.requestId) === rej.getAttribute('data-reject'); })[0];
+        if (item && confirm('Rifiutare la richiesta di ' + (empById(item.empId) || {}).name + ' per il ' + fmtDate(item.dates[0]) +
+          '?\nViene cancellata: il dipendente non la vedrà più.')) rejectRequests([item.requestId]);
+        return;
+      }
       var li = ev.target.closest('li.err');
       if (li) focusCell(li.getAttribute('data-emp'), li.getAttribute('data-date'));
     });
@@ -1047,6 +1187,8 @@
     f.minDriversPerShift.value = state.settings.minDriversPerShift;
     f.maxSameInRow.value = state.settings.maxSameInRow;
     f.maxConsecutiveDays.value = state.settings.maxConsecutiveDays;
+    f.maxRestRequests.value = state.settings.maxRestRequests;
+    f.requestDeadlineDay.value = state.settings.requestDeadlineDay;
     f.maxWeekendsPerMonth.value = state.settings.maxWeekendsPerMonth;
   }
 
@@ -1065,6 +1207,10 @@
         ? +f.perm104PerMonth.value : R.DEFAULT_SETTINGS.perm104PerMonth;
       state.settings.minDriversPerShift = f.minDriversPerShift.value !== '' && +f.minDriversPerShift.value >= 0
         ? +f.minDriversPerShift.value : R.DEFAULT_SETTINGS.minDriversPerShift;
+      state.settings.maxRestRequests = f.maxRestRequests.value !== '' && +f.maxRestRequests.value >= 0
+        ? Math.round(+f.maxRestRequests.value) : R.DEFAULT_SETTINGS.maxRestRequests;
+      state.settings.requestDeadlineDay = +f.requestDeadlineDay.value >= 1 && +f.requestDeadlineDay.value <= 31
+        ? Math.round(+f.requestDeadlineDay.value) : R.DEFAULT_SETTINGS.requestDeadlineDay;
       state.settings.maxConsecutiveDays = +f.maxConsecutiveDays.value >= 1
         ? +f.maxConsecutiveDays.value : R.DEFAULT_SETTINGS.maxConsecutiveDays;
       state.settings.maxSameInRow = +f.maxSameInRow.value >= 1 ? +f.maxSameInRow.value : R.DEFAULT_SETTINGS.maxSameInRow;
@@ -1368,6 +1514,8 @@
     $('#period-form').addEventListener('submit', insertPeriod);
     $('#btn-print').addEventListener('click', function () { window.print(); });
     $('#btn-excel').addEventListener('click', exportExcel);
+    $('#btn-publish').addEventListener('click', publishMonth);
+    $('#btn-unpublish').addEventListener('click', unpublishMonth);
     document.addEventListener('keydown', function (ev) {
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' &&
         !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) {
@@ -1396,7 +1544,11 @@
       opts = opts || {};
       state = opts.state ? normalize(opts.state) : loadState();
       persistHook = opts.persist || null;
+      online = opts.online || null;
       undoStack = [];
+      touchedRequests = [];
+      reqConflicts = [];
+      if (online) applyRequests(online.requests, true);
       if (!started) { started = true; init(); } else { renderAll(); }
     },
     // Dati salvati nel browser di questo computer (per importarli in un'unità).
@@ -1407,6 +1559,13 @@
       } catch (e) { return null; }
     },
     getState: function () { return state; },
+    // Richieste aggiornate dal server (al ritorno sulla pagina).
+    setRequests: function (list) {
+      if (!online) return;
+      online.requests = list;
+      applyRequests(list, false);
+      renderMonth();
+    },
     toast: toast
   };
 

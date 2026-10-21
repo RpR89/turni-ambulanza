@@ -18,7 +18,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - ogni utente vede e modifica solo i turni della **propria unità**, salvati online e condivisi tra
     referente e vice referente; se due persone salvano insieme l'app lo segnala e chiede quale versione tenere;
   - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti (prima quelli da approvare)
-    con unità, ruolo, attivo/disattivo e amministratore — **un amministratore può nominare altri amministratori** —,
+    con nome e cognome modificabili, unità, ruolo, attivo/disattivo e amministratore — **un amministratore può nominare altri amministratori** —,
     inserimento manuale di utenti con mail di invito;
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 - **Accesso dei dipendenti** (con il back end attivo):

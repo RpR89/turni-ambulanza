@@ -566,3 +566,5 @@ body.staff-mode .tabs, body.staff-mode main > .panel { display: none !important;
   background: var(--surface); color: var(--text); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 #users-table input[data-f="first_name"], #users-table input[data-f="last_name"] { width: 100%; min-width: 120px; }
+
+.ics-row { margin: 12px 0 4px; }

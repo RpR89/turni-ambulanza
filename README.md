@@ -135,6 +135,12 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     restano i turni scritti o modificati a mano, i bloccati e tutte le altre voci.
   - **Reset completo** cancella tutto il mese, anche i turni scritti a mano; restano solo le caselle bloccate 🔒.
 - **Stampa** (A4 orizzontale).
+- **Turni nel calendario** (Google Calendar, iPhone, Outlook): file `.ics` con i turni del mese
+  (con orari e ambulanza; le notti finiscono il giorno dopo; la formazione come evento di tutto il giorno).
+  - Il **dipendente** lo scarica dalla sua schermata (*Aggiungi i miei turni al calendario*) per i mesi pubblicati;
+  - il **referente** dal menu *Altro → 📅 Calendario*, scegliendo il dipendente (turni del mese così come sono).
+  - Sul telefono il file si apre e i turni si aggiungono al calendario; su Google Calendar dal computer:
+    *Impostazioni → Importa ed esporta → Importa*. Reimportando dopo un cambio, gli eventi si aggiornano senza doppioni.
 - **Esporta Excel**: scarica il *Tabellone turni* in formato `.xlsx`, con lo stesso aspetto
   di quello del comitato: logo e titolo, un gruppo di colonne per ogni turno di ogni ambulanza
   (*GIORNO | 12345*, *NOTTE | 12345*, …; *UR* se il codice non è impostato), *Note*, *EXTRA*,
@@ -205,6 +211,7 @@ npm start    # server locale su http://localhost:8080
 - `js/app.js`: interfaccia del tabellone
 - `js/requests.js`: richieste dei dipendenti nel tabellone e copia pubblicata del mese (senza DOM, testato)
 - `js/staff.js`: schermata del dipendente (turni pubblicati e richieste)
+- `js/ics.js`: file di calendario `.ics` dei turni (senza DOM, testato)
 - `js/auth.js`, `js/config.js`: accesso, registrazione, amministrazione e salvataggio online (Supabase);
   `js/vendor/supabase.min.js` è [supabase-js](https://github.com/supabase/supabase-js) 2.45.4 (licenza MIT)
 - `api/admin-invite.js`: funzione Vercel per l'inserimento manuale degli utenti (usa la chiave service_role)
@@ -213,4 +220,4 @@ npm start    # server locale su http://localhost:8080
 - `supabase/schema.sql`: tabelle e regole di sicurezza del database; `supabase/test/` le prove su un Postgres locale:
   `psql -f supabase/test/mock_auth.sql -f supabase/schema.sql -f supabase/test/schema_test.sql`
 - `js/export-xlsx.js`: tabellone in Excel; `js/vendor/exceljs.min.js` è [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (licenza MIT)
-- `tests/rules.test.js`: test delle regole; `tests/requests.test.js`: richieste e pubblicazione
+- `tests/rules.test.js`: test delle regole; `tests/requests.test.js`: richieste e pubblicazione; `tests/ics.test.js`: calendario

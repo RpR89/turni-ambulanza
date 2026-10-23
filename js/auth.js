@@ -229,7 +229,7 @@
         if (r.data.role === 'dipendente' && !r.data.is_admin) {
           ctx.unitId = unit;
           renderUserBar();
-          return window.TurniStaff.start({ sb: sb, profile: r.data, unitId: unit });
+          return window.TurniStaff.start({ sb: sb, profile: r.data, unitId: unit, unitName: unitName(unit) });
         }
         renderUserBar();
         renderAdmin();

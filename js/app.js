@@ -1150,6 +1150,43 @@
     toast('Reset completo fatto. Puoi annullare con "Annulla".');
   }
 
+  // ---------- Calendario (.ics) dei turni di un dipendente ----------
+
+  function openIcsDialog() {
+    var emps = activeEmployees();
+    if (!emps.length) return toast('Aggiungi prima i dipendenti');
+    var dlg = $('#ics-dialog');
+    $('#ics-title').textContent = 'Turni di ' + MONTHS[view.m - 1].toLowerCase() + ' ' + view.y + ' nel calendario';
+    var sel = dlg.querySelector('[name=emp]');
+    var prev = sel.value;
+    sel.innerHTML = emps.map(function (e) {
+      return '<option value="' + esc(e.id) + '"' + (e.id === prev ? ' selected' : '') + '>' + esc(e.name) + '</option>';
+    }).join('');
+    dlg.returnValue = '';
+    dlg.showModal();
+  }
+
+  function downloadIcs(empId) {
+    var e = empById(empId);
+    if (!e) return;
+    var shifts = {};
+    R.shiftCatalog(state).list.forEach(function (s) {
+      shifts[s.id] = { name: s.name, label: s.label, start: s.startText, end: s.endText, ambCode: s.ambCode };
+    });
+    var entries = {};
+    R.monthDays(view.y, view.m).forEach(function (k) {
+      var v = getEntry(e.id, k);
+      if (v) entries[k] = v;
+    });
+    var events = window.Ics.shiftEvents(entries, shifts);
+    if (!events.length) return toast(e.name + ' non ha turni in ' + MONTHS[view.m - 1].toLowerCase() + '.');
+    var title = MONTHS[view.m - 1] + ' ' + view.y;
+    download(window.Ics.fileName(title, e.name), window.Ics.buildCalendar(events, {
+      name: 'Turni ' + title, uidKey: O.monthKey(view.y, view.m) + '-' + e.id
+    }), 'text/calendar;charset=utf-8');
+    toast(events.length + ' eventi nel file del calendario di ' + e.name + '.');
+  }
+
   // ---------- Esporta Excel (tabellone turni) ----------
 
   var excelLoading = null;
@@ -1675,6 +1712,11 @@
     $('#btn-excel').addEventListener('click', exportExcel);
     $('#btn-publish').addEventListener('click', publishMonth);
     $('#btn-unpublish').addEventListener('click', unpublishMonth);
+    $('#btn-ics').addEventListener('click', openIcsDialog);
+    $('#ics-dialog').addEventListener('close', function () {
+      var dlg = $('#ics-dialog');
+      if (dlg.returnValue === 'ok') downloadIcs(dlg.querySelector('[name=emp]').value);
+    });
     document.addEventListener('keydown', function (ev) {
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' &&
         !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) {

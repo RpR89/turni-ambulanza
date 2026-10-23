@@ -148,7 +148,10 @@
       ' alle ' + pad(at.getHours()) + ':' + pad(at.getMinutes()) + '</p>';
     if ((snap.employees || []).some(function (e) { return e.id === mine; })) {
       h += '<section class="card"><h3>I tuoi turni</h3>' +
-        (list ? '<ul class="my-shifts">' + list + '</ul>' : '<p class="note">Nessun turno in questo mese.</p>') + '</section>';
+        (list ? '<ul class="my-shifts">' + list + '</ul>' +
+          '<p class="ics-row"><button type="button" class="primary" data-ics>📅 Aggiungi i miei turni al calendario</button></p>' +
+          '<p class="note">Si apre con Google Calendar, il calendario del telefono o Outlook. Su Google Calendar dal computer: ⚙ Impostazioni → Importa ed esporta → Importa. Se poi i turni cambiano, scarica e importa di nuovo il file: gli eventi si aggiornano senza doppioni.</p>'
+          : '<p class="note">Nessun turno in questo mese.</p>') + '</section>';
     }
     h += '<section class="card"><h3>Tabellone dell\'unità</h3><div class="grid-wrap"><table class="grid staff-grid">' +
       headRow(days) + '<tbody>' + (snap.employees || []).map(function (e) {
@@ -230,6 +233,32 @@
 
   // ---------- Azioni ----------
 
+  // File .ics con i propri turni pubblicati del mese (Google Calendar, telefono, Outlook).
+  function downloadIcs() {
+    var key = O.monthKey(st.y, st.m), pub = st.published[key];
+    if (!pub) return;
+    var snap = pub.data || {}, mine = st.profile.employee_id;
+    var shifts = {};
+    (snap.ambulances || []).forEach(function (a) {
+      (a.shifts || []).forEach(function (s) {
+        shifts[s.id] = { name: s.name, label: s.label, start: s.start, end: s.end, ambCode: a.code };
+      });
+    });
+    var me = (snap.employees || []).filter(function (e) { return e.id === mine; })[0] || { name: '' };
+    var title = MONTHS[st.m - 1] + ' ' + st.y;
+    var events = window.Ics.shiftEvents((snap.cells || {})[mine] || {}, shifts);
+    if (!events.length) return toast('Nessun turno da aggiungere in questo mese.');
+    var ics = window.Ics.buildCalendar(events, { name: 'Turni ' + title, uidKey: key + '-' + mine, location: st.unitName || '' });
+    var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = window.Ics.fileName(title, me.name);
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    toast(events.length + ' eventi nel file del calendario: aprilo per aggiungerli.');
+  }
+
   function toggle(day) {
     var key = O.monthKey(st.y, st.m), self = me();
     if (!self || st.busy) return;
@@ -261,6 +290,7 @@
         st.m = ((m - 1) % 12 + 12) % 12 + 1;
         return load().then(render).catch(function (e) { toast(errText(e), true); });
       }
+      if (ev.target.closest('[data-ics]')) return downloadIcs();
       var t = ev.target.closest('[data-tool]');
       if (t) { st.tool = t.getAttribute('data-tool'); return render(); }
       var cell = ev.target.closest('td[data-day]');
@@ -276,10 +306,10 @@
   }
 
   window.TurniStaff = {
-    // opts: { sb, profile, unitId }
+    // opts: { sb, profile, unitId, unitName }
     start: function (opts) {
       var now = new Date();
-      st = { sb: opts.sb, profile: opts.profile, unitId: opts.unitId, roster: { employees: [] }, requests: [],
+      st = { sb: opts.sb, profile: opts.profile, unitId: opts.unitId, unitName: opts.unitName || '', roster: { employees: [] }, requests: [],
         published: {}, y: now.getFullYear(), m: now.getMonth() + 1, tool: 'R', loadedAt: 0 };
       document.body.classList.add('staff-mode');
       $('#staff-view').hidden = false;

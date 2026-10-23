@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Turni">
-  <link rel="stylesheet" href="css/style.css?v=3.4">
+  <link rel="stylesheet" href="css/style.css?v=3.5">
 </head>
 <body>
   <header class="topbar no-print">
@@ -133,6 +133,7 @@
           <button id="btn-excel" title="Scarica il tabellone turni in Excel (settimane che iniziano con un lunedì del mese)">Esporta Excel</button>
           <button id="btn-publish" class="publish" hidden title="I dipendenti vedono i turni del mese così come sono adesso">📢 Pubblica turni</button>
           <button id="btn-unpublish" hidden title="I dipendenti non vedono più i turni di questo mese">Ritira pubblicazione</button>
+          <button id="btn-ics" title="Scarica i turni del mese di un dipendente in un file per Google Calendar (o un altro calendario)">📅 Calendario</button>
           </div>
         </div>
       </div>
@@ -344,10 +345,22 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.4 (nomi degli utenti modificabili)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.5 (turni nel calendario)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="vol-pop" class="vol-pop no-print" role="dialog" aria-label="Volontari nel turno" hidden></div>
+  <dialog id="ics-dialog" class="dialog no-print" aria-labelledby="ics-title">
+    <form method="dialog">
+      <h3 id="ics-title">Turni nel calendario</h3>
+      <p>Scarica i turni del mese di un dipendente in un file da aprire con Google Calendar (o il calendario del telefono).</p>
+      <label class="field">Dipendente <select name="emp"></select></label>
+      <p class="note">Si apre con Google Calendar, il calendario del telefono o Outlook. Su Google Calendar dal computer: ⚙ Impostazioni → Importa ed esporta → Importa. Se poi i turni cambiano, scarica e importa di nuovo il file: gli eventi si aggiornano senza doppioni.</p>
+      <div class="dialog-actions">
+        <button value="cancel" formnovalidate>Annulla</button>
+        <button value="ok" class="primary">📅 Scarica</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="reject-dialog" class="dialog no-print" aria-labelledby="rej-title">
     <form method="dialog">
       <h3 id="rej-title">Rifiuta la richiesta</h3>
@@ -363,14 +376,15 @@
     </form>
   </dialog>
 
-  <script src="js/config.js?v=3.4"></script>
-  <script src="js/vendor/supabase.min.js?v=3.4"></script>
-  <script src="js/rules.js?v=3.4"></script>
-  <script src="js/requests.js?v=3.4"></script>
-  <script src="js/logo.js?v=3.4"></script>
-  <script src="js/export-xlsx.js?v=3.4"></script>
-  <script src="js/staff.js?v=3.4"></script>
-  <script src="js/auth.js?v=3.4"></script>
-  <script src="js/app.js?v=3.4"></script>
+  <script src="js/config.js?v=3.5"></script>
+  <script src="js/vendor/supabase.min.js?v=3.5"></script>
+  <script src="js/rules.js?v=3.5"></script>
+  <script src="js/requests.js?v=3.5"></script>
+  <script src="js/ics.js?v=3.5"></script>
+  <script src="js/logo.js?v=3.5"></script>
+  <script src="js/export-xlsx.js?v=3.5"></script>
+  <script src="js/staff.js?v=3.5"></script>
+  <script src="js/auth.js?v=3.5"></script>
+  <script src="js/app.js?v=3.5"></script>
 </body>
 </html>

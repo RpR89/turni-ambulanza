@@ -613,6 +613,8 @@
   }
 
   function initAdmin() {
+    // Tornando nella scheda si rilegge l'elenco (approvazioni fatte nel frattempo da un referente).
+    $('#tab-admin-btn').addEventListener('click', function () { if (ctx.profile && ctx.profile.is_admin) loadUsers(); });
     $('#unit-add-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
       var name = ev.target.name.value.trim();

@@ -448,6 +448,7 @@ body.auth-mode .topbar, body.auth-mode main, body.auth-mode footer.version { dis
   .toolbar { gap: 10px; }
   .month-nav { width: 100%; flex-wrap: wrap; }
   .month-nav h2 { flex: 1; min-width: 0; font-size: 18px; }
+  .month-nav .pub-status { order: 10; flex-basis: 100%; text-align: center; white-space: normal; }
   .amb-view { width: 100%; }
   .amb-view select { flex: 1; }
 

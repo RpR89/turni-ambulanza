@@ -1,6 +1,11 @@
 -- Prove dello schema: eseguire dopo mock_auth.sql e schema.sql (vedi tests/schema.test.js).
 \set ON_ERROR_STOP 1
 create extension if not exists pgcrypto;
+-- "oggi" fisso per le finestre delle richieste (5 novembre 2026: aperte quelle di dicembre);
+-- le prove lo spostano con set test.oggi.
+create or replace function public.request_today() returns date language sql stable as $$
+  select coalesce(nullif(current_setting('test.oggi', true), ''), '2026-11-05')::date
+$$;
 insert into public.units (id, name) values
   ('11111111-1111-1111-1111-111111111111', 'U.T. Canal San Bovo'),
   ('22222222-2222-2222-2222-222222222222', 'U.T. Trento');
@@ -164,7 +169,7 @@ set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
 select 'luca in attesa vede roster', public.unit_roster('22222222-2222-2222-2222-222222222222') is null; -- t
 do $$ begin
-  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date, 'R');
+  perform public.set_request(date '2026-12-01', 'R');
   raise exception 'ERRORE: richiesta da dipendente non approvato';
 exception when insufficient_privilege then raise notice 'OK dipendente non approvato bloccato';
 end $$;
@@ -210,7 +215,7 @@ select 'luca vede unit_data', count(*) from public.unit_data;                  -
 select 'luca roster', jsonb_array_length(public.unit_roster('22222222-2222-2222-2222-222222222222') -> 'employees'),
   public.unit_roster('22222222-2222-2222-2222-222222222222') ->> 'maxRestRequests'; -- 2 | 2
 do $$
-declare m date := (date_trunc('month', current_date) + interval '2 month')::date;
+declare m date := date '2026-12-01';
 begin
   perform public.set_request(m, 'R');
   perform public.set_request(m + 1, 'R');
@@ -223,7 +228,7 @@ begin
   perform public.set_request(m + 1, null);                -- ne toglie una
   perform public.set_request(m + 3, 'R');                 -- e ne mette un'altra
   begin
-    perform public.set_request(date_trunc('month', current_date)::date + 20, 'R');
+    perform public.set_request(date '2026-11-21', 'R');
     raise exception 'ERRORE: accettata richiesta dopo il termine';
   exception when check_violation then raise notice 'OK termine scaduto';
   end;
@@ -243,7 +248,7 @@ update public.unit_data set data = jsonb_set(data, '{employees,0,active}', 'fals
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
 do $$ begin
-  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 7, 'R');
+  perform public.set_request(date '2026-12-01' + 7, 'R');
   raise exception 'ERRORE: richiesta da dipendente sospeso';
 exception when insufficient_privilege then raise notice 'OK sospeso non fa richieste';
 end $$;
@@ -256,13 +261,13 @@ update public.unit_data set data = jsonb_set(data, '{employees,0,active}', 'true
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000005';
 do $$ begin
-  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 5, 'P');
+  perform public.set_request(date '2026-12-01' + 5, 'P');
   raise exception 'ERRORE: 104 senza diritto';
 exception when check_violation then raise notice 'OK 104 solo con diritto';
 end $$;
 select 'sara vede richieste dirette', count(*) from public.requests;              -- 0 (solo le sue: nessuna)
 select 'sara vede richieste unita', string_agg(kind, '' order by day)
-  from public.unit_requests('22222222-2222-2222-2222-222222222222', current_date, current_date + 120); -- RAR
+  from public.unit_requests('22222222-2222-2222-2222-222222222222', '2026-11-01', '2027-03-31'); -- RAR
 reset role;
 reset request.jwt.claim.sub;
 
@@ -271,7 +276,7 @@ set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000002';
 select 'anna vede richieste', string_agg(kind, '' order by day) from public.requests;  -- RPR
 insert into public.published (unit_id, month, data, published_by)
-  values ('22222222-2222-2222-2222-222222222222', to_char(current_date + interval '2 month', 'YYYY-MM'),
+  values ('22222222-2222-2222-2222-222222222222', '2026-12',
           '{"cells":{}}', auth.uid());
 reset role;
 reset request.jwt.claim.sub;
@@ -279,7 +284,7 @@ set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000004';
 select 'luca vede pubblicati', count(*) from public.published;                    -- 1
 do $$ begin
-  perform public.set_request((date_trunc('month', current_date) + interval '2 month')::date + 10, 'R');
+  perform public.set_request(date '2026-12-01' + 10, 'R');
   raise exception 'ERRORE: richiesta su mese pubblicato';
 exception when check_violation then raise notice 'OK mese pubblicato bloccato';
 end $$;
@@ -293,6 +298,95 @@ do $$ begin
   perform public.save_unit_data('22222222-2222-2222-2222-222222222222', '{}', 2);
   raise exception 'ERRORE: dipendente ha salvato i turni';
 exception when insufficient_privilege then raise notice 'OK dipendente non salva i turni';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+
+-- ===== limite del 25% per turno, riposo per un solo turno, precedenza del 104, finestra =====
+-- Canal: 8 dipendenti (al massimo 2 a casa per turno), giorno 07–19 tutti i giorni, notte 19–07 solo lun–ven.
+insert into public.unit_data (unit_id, data, version) values ('11111111-1111-1111-1111-111111111111',
+  '{"employees":[{"id":"c1","name":"Uno","has104":true},{"id":"c2","name":"Due","has104":true},
+                 {"id":"c3","name":"Tre","has104":true},{"id":"c4","name":"Quattro"},{"id":"c5","name":"Cinque"},
+                 {"id":"c6","name":"Sei"},{"id":"c7","name":"Sette"},{"id":"c8","name":"Otto"}],
+    "settings":{"ambulances":[{"id":"A1","shifts":[
+      {"id":"G","start":"07:00","end":"19:00","days":[true,true,true,true,true,true,true]},
+      {"id":"N","start":"19:00","end":"07:00","days":[true,true,true,true,true,false,false]}]}]}}', 1)
+  on conflict (unit_id) do update set data = excluded.data;
+insert into auth.users (id, email, raw_user_meta_data)
+  select ('aaaaaaaa-0000-0000-0000-00000000001' || i)::uuid, 'c' || i || '@critn.it',
+    jsonb_build_object('first_name', 'C' || i, 'last_name', 'Canal', 'unit_id', '11111111-1111-1111-1111-111111111111')
+  from generate_series(1, 4) i;
+select 'parti gio 10/12', public.day_parts('11111111-1111-1111-1111-111111111111', '2026-12-10'); -- {G,N}
+select 'parti sab 12/12', public.day_parts('11111111-1111-1111-1111-111111111111', '2026-12-12'); -- {G}
+select 'limite canal', public.request_cap('11111111-1111-1111-1111-111111111111');                -- 2
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select public.manage_employee_account(('aaaaaaaa-0000-0000-0000-00000000001' || i)::uuid, 'c' || i, true)
+  from generate_series(1, 4) i;
+do $$
+declare res jsonb;
+begin
+  -- c2 e c3 chiedono la notte del 10: la notte è al completo, il giorno no
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000012', false);
+  perform public.set_request('2026-12-10', 'R', 'N');
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000013', false);
+  perform public.set_request('2026-12-10', 'R', 'N');
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000014', false);
+  begin
+    perform public.set_request('2026-12-10', 'R', 'N');
+    raise exception 'ERRORE: superato il 25%% di notte';
+  exception when check_violation then raise notice 'OK notte al completo: %', sqlerrm;
+  end;
+  begin
+    perform public.set_request('2026-12-10', 'R');
+    raise exception 'ERRORE: giornata intera con la notte al completo';
+  exception when check_violation then raise notice 'OK giornata intera rifiutata';
+  end;
+  perform public.set_request('2026-12-10', 'R', 'G');          -- il giorno ha ancora posto
+  -- sabato c'è solo il giorno: la richiesta "notte" vale per la giornata
+  perform public.set_request('2026-12-12', 'R', 'N');
+  -- c1 chiede la 104 il 10: la notte era al completo, salta il riposo di c3 (l'ultimo)
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000011', false);
+  res := public.set_request('2026-12-10', 'P');
+  if (res ->> 'bumped')::integer <> 1 then raise exception 'ERRORE: 104 senza precedenza (%)', res; end if;
+  -- l'11 due 104 (c1, c2): la terza (c3) non entra
+  perform public.set_request('2026-12-11', 'P');
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000012', false);
+  perform public.set_request('2026-12-11', 'P');
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000013', false);
+  begin
+    perform public.set_request('2026-12-11', 'P');
+    raise exception 'ERRORE: più 104 del 25%%';
+  exception when check_violation then raise notice 'OK 104 al completo: %', sqlerrm;
+  end;
+  -- finestra: gennaio non è ancora aperto; dopo il 15 novembre dicembre è chiuso
+  begin
+    perform public.set_request('2027-01-05', 'R');
+    raise exception 'ERRORE: richiesta prima dell''apertura';
+  exception when check_violation then raise notice 'OK non ancora aperte: %', sqlerrm;
+  end;
+  perform set_config('test.oggi', '2026-11-16', false);
+  begin
+    perform public.set_request('2026-12-20', 'R');
+    raise exception 'ERRORE: richiesta dopo il 15';
+  exception when check_violation then raise notice 'OK chiuse dopo il 15';
+  end;
+  perform set_config('test.oggi', '', false);
+end $$;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000013';
+select 'c3 vede il riposo annullato', day, kind, part from public.request_bumps;   -- 2026-12-10 | R | N
+select 'c3 richieste unita 10/12', string_agg(employee_id || ':' || kind || coalesce(part, ''), ',' order by employee_id)
+  from public.unit_requests('11111111-1111-1111-1111-111111111111', '2026-12-10', '2026-12-10'); -- c1:A,c2:RN,c4:RG
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000014';
+select 'c4 sabato', kind, part is null from public.requests where day = '2026-12-12';   -- R | t
+select 'c4 non vede annullati altrui', count(*) from public.request_bumps;              -- 0
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select 'mario vede annullati', count(*) from public.request_bumps;                      -- 1
+do $$ begin
+  insert into public.request_bumps (unit_id, employee_id, day, kind)
+    values ('11111111-1111-1111-1111-111111111111', 'c4', '2026-12-01', 'R');
+  raise exception 'ERRORE: scritto un annullamento a mano';
+exception when insufficient_privilege then raise notice 'OK annullamenti protetti';
 end $$;
 reset role;
 reset request.jwt.claim.sub;

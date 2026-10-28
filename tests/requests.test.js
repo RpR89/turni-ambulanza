@@ -88,3 +88,60 @@ test('pubblicazione: solo il mese, malattia e 104 senza motivo', () => {
   s.assignments.b['2026-12-10'] = 'N';
   assert.ok(!O.sameSnapshot(snap, O.buildSnapshot(s, 2026, 12)));
 });
+
+test('finestra e limite delle richieste', () => {
+  assert.equal(O.requestOpening(2026, 12), '2026-11-01');
+  assert.equal(O.requestOpening(2027, 1), '2026-12-01');
+  assert.equal(O.requestCap(16, 25), 4);
+  assert.equal(O.requestCap(8, 25), 2);
+  assert.equal(O.requestCap(3, 25), 1);    // almeno uno
+  assert.equal(O.requestCap(8, 0), Infinity);
+  // esempio: su 16, 3 chiedono il giorno, 2 la notte, 1 tutta la giornata
+  const list = [
+    { day: '2026-12-10', kind: 'R', part: 'G' }, { day: '2026-12-10', kind: 'R', part: 'G' },
+    { day: '2026-12-10', kind: 'R', part: 'G' }, { day: '2026-12-10', kind: 'R', part: 'N' },
+    { day: '2026-12-10', kind: 'R', part: 'N' }, { day: '2026-12-10', kind: 'R' }, { day: '2026-12-11', kind: 'R' }
+  ];
+  assert.equal(O.partLoad(list, '2026-12-10', 'G'), 4);  // al completo
+  assert.equal(O.partLoad(list, '2026-12-10', 'N'), 3);
+});
+
+test('riposo per un solo turno: toglie solo i turni automatici di quella parte', () => {
+  const s = makeState(
+    { a: { '2026-12-03': ['G', 'N'], '2026-12-04': 'N' }, b: { '2026-12-03': 'N', '2026-12-05': 'F' } },
+    { auto: { a: { '2026-12-03': true } } });
+  assert.deepEqual(R.dayParts(s, '2026-12-03'), ['G', 'N']);
+  const res = O.syncRequests(s, [
+    { id: 1, employee_id: 'a', day: '2026-12-03', kind: 'R', part: 'N' },  // N automatico → tolto, G resta
+    { id: 2, employee_id: 'a', day: '2026-12-04', kind: 'R', part: 'N' },  // N scritto a mano → conflitto
+    { id: 3, employee_id: 'b', day: '2026-12-03', kind: 'R', part: 'G' },  // ha solo la notte: nulla da togliere
+    { id: 4, employee_id: 'b', day: '2026-12-05', kind: 'R', part: 'G' }   // in ferie
+  ]);
+  assert.equal(s.assignments.a['2026-12-03'], 'G');
+  assert.equal(s.auto.a['2026-12-03'], true);
+  assert.equal(O.tagOf(s, 'a', '2026-12-03'), 'R:N');
+  assert.equal(R.offPartOn(s, 'a', '2026-12-03'), 'N');
+  assert.deepEqual(res.conflicts.map(c => c.request.id), [2]);
+  assert.equal(s.assignments.b['2026-12-03'], 'N');
+  assert.equal(O.tagOf(s, 'b', '2026-12-03'), 'R:G');
+  // la proposta automatica non le dà la notte
+  assert.ok(R.blockers(s, 'a', '2026-12-03', 'N').some(m => /a casa la notte/.test(m)));
+  // diventa una richiesta per tutta la giornata
+  O.syncRequests(s, [{ id: 1, employee_id: 'a', day: '2026-12-03', kind: 'R' }]);
+  assert.equal(R.offPartOn(s, 'a', '2026-12-03'), '');
+  assert.equal(s.assignments.a['2026-12-03'], 'R');
+  // e di nuovo solo la notte: la casella R si svuota e torna il segno della notte
+  O.syncRequests(s, [{ id: 1, employee_id: 'a', day: '2026-12-03', kind: 'R', part: 'N' }]);
+  assert.equal(s.assignments.a['2026-12-03'], undefined);
+  assert.equal(O.tagOf(s, 'a', '2026-12-03'), 'R:N');
+  // tolta: resta solo la casella (vuota)
+  O.syncRequests(s, []);
+  assert.equal(O.tagOf(s, 'a', '2026-12-03'), '');
+});
+
+test('la proposta automatica rispetta il riposo per un solo turno', () => {
+  const s = makeState({}, { reqTags: { a: { '2026-12-03': 'R:N' } } });
+  const res = R.generateMonth(s, 2026, 12);
+  const got = R.shiftIdsOf(s, (res.assignments.a || {})['2026-12-03']);
+  assert.ok(got.indexOf('N') < 0);
+});

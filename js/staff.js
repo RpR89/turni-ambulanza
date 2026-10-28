@@ -2,8 +2,9 @@
  * Schermata del dipendente (accesso utenti attivo, ruolo "dipendente").
  *
  * - Mese pubblicato dal referente: vede il tabellone dei turni (copia pubblicata) e l'elenco dei suoi turni.
- * - Mese non pubblicato: vede solo le richieste di riposo (e 104) dell'unità e, fino al giorno limite,
- *   inserisce o toglie le proprie toccando la sua riga.
+ * - Mese non pubblicato: vede solo le richieste di riposo (e 104) dell'unità e, dal 1° al giorno limite
+ *   del mese prima, inserisce o toglie le proprie toccando la sua riga: per tutta la giornata o, nei giorni
+ *   con giorno e notte, per un solo turno. Sotto, quanti sono già a casa per turno (massimo il 25%).
  * I controlli veri (limiti, termine, diritto alla 104) li fa il database: qui si mostrano soltanto.
  */
 (function () {
@@ -15,6 +16,9 @@
   var WEEKDAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
   var WEEKDAY_NAMES = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'];
   var CODE_TEXT = { F: 'Ferie', R: 'Riposo', A: 'Assente', C: 'Formazione', P: 'Permesso 104' };
+  var PART_NAME = { G: 'giorno', N: 'notte' };
+  // Strumenti per le richieste: tipo e turno (vuoto = tutta la giornata).
+  var TOOLS = { R: { kind: 'R', part: null }, RG: { kind: 'R', part: 'G' }, RN: { kind: 'R', part: 'N' }, P: { kind: 'P', part: null } };
 
   var st = null;
 
@@ -47,10 +51,14 @@
       st.sb.rpc('unit_roster', { p_unit: st.unitId }),
       st.sb.from('published').select('month,data,published_at').eq('unit_id', st.unitId),
       st.sb.rpc('unit_requests', { p_unit: st.unitId, p_from: from,
-        p_to: R.toKey(to.getFullYear(), to.getMonth() + 1, to.getDate()) })
+        p_to: R.toKey(to.getFullYear(), to.getMonth() + 1, to.getDate()) }),
+      st.sb.from('request_bumps').select('day,kind,part,created_at').gte('day', from)
     ]).then(function (res) {
       res.forEach(function (r) { if (r.error) throw r.error; });
       st.roster = res[0].data || { employees: [] };
+      // orari dei turni, per sapere quali giorni hanno giorno e notte
+      st.plan = { settings: { ambulances: st.roster.ambulances || [] } };
+      st.bumps = res[3].data || [];
       st.published = {};
       (res[1].data || []).forEach(function (row) { st.published[row.month] = row; });
       st.requests = res[2].data || [];
@@ -183,49 +191,95 @@
     }).join('') + '</tr></tfoot>';
   }
 
+  function partsOf(day) { return R.dayParts(st.plan, day); }
+
+  function cap() { return st.roster.requestCap == null ? Infinity : +st.roster.requestCap; }
+
+  function reqText(r) {
+    if (r.kind === 'A') return 'Assente';
+    return CODE_TEXT[r.kind] + (r.part ? ': a casa solo ' + (r.part === 'N' ? 'la notte' : 'di giorno') : '');
+  }
+
+  // Righe "a casa" per turno sotto il tabellone delle richieste: quanti sono a casa / massimo.
+  function loadRows(days, list) {
+    var max = cap();
+    var withParts = days.some(function (k) { return partsOf(k).length > 1; });
+    var rows = withParts ? ['G', 'N'] : [''];
+    return '<tfoot>' + rows.map(function (part) {
+      return '<tr><th class="name"' + (part ? ' title="A casa di ' + PART_NAME[part] + '"' : '') + '>A casa' + (part ? ' ' + part : '') +
+        (max < Infinity ? ' <small>massimo ' + max + '</small>' : '') + '</th>' + days.map(function (k) {
+        var parts = partsOf(k);
+        var p = part || parts[0] || 'G';
+        if (part && parts.indexOf(part) < 0) return '<td class="cov off' + (R.weekday(k) === 0 ? ' monday' : '') + '">–</td>';
+        var n = O.partLoad(list, k, p);
+        return '<td class="cov' + (n >= max ? ' under' : '') + (R.weekday(k) === 0 ? ' monday' : '') + '"' +
+          (n >= max ? ' title="Al completo"' : '') + '>' + (n || '') + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tfoot>';
+  }
+
   function renderRequests(key, title) {
     var days = R.monthDays(st.y, st.m);
     var self = me();
     var deadline = O.requestDeadline(st.y, st.m, st.roster.requestDeadlineDay);
-    var open = todayKey() <= deadline;
+    var opening = O.requestOpening(st.y, st.m);
+    var today = todayKey();
+    var open = today >= opening && today <= deadline;
+    var withParts = days.some(function (k) { return partsOf(k).length > 1; });
+    if (!withParts && (st.tool === 'RG' || st.tool === 'RN')) st.tool = 'R';
     var maxR = +st.roster.maxRestRequests, maxP = +st.roster.perm104PerMonth;
     var mine = self ? requestsOf(self.id, key) : [];
     var usedR = mine.filter(function (r) { return r.kind === 'R'; }).length;
     var usedP = mine.filter(function (r) { return r.kind === 'P'; }).length;
     var canEdit = open && !!self;
-    if (!self || !self.has104) st.tool = 'R';
+    if ((!self || !self.has104) && st.tool === 'P') st.tool = 'R';
+    var monthBumps = (st.bumps || []).filter(function (b) { return b.day.slice(0, 7) === key; });
 
     var h = '<p class="pub-status off">I turni di ' + esc(title.toLowerCase()) + ' non sono ancora pubblicati.</p>';
     h += '<section class="card"><h3>Richieste di riposo' + (self && self.has104 ? ' e permessi 104' : '') + '</h3>';
+    var dl = fmtDay(deadline) + '/' + deadline.slice(0, 4), op = fmtDay(opening) + '/' + opening.slice(0, 4);
     h += open
-      ? '<p class="note">Puoi inserire o togliere le tue richieste fino al <b>' + fmtDay(deadline) + '/' + deadline.slice(0, 4) +
+      ? '<p class="note">Puoi inserire o togliere le tue richieste fino al <b>' + dl +
         '</b>. Tocca un giorno della tua riga (evidenziata).</p>'
-      : '<p class="note">Il termine per le richieste di questo mese è scaduto il ' + fmtDay(deadline) + '/' +
-        deadline.slice(0, 4) + '. Per un cambio parla con il referente.</p>';
+      : today < opening
+        ? '<p class="note">Le richieste per ' + esc(title.toLowerCase()) + ' si potranno inserire dal <b>' + op + '</b> al <b>' + dl + '</b>.</p>'
+        : '<p class="note">Il termine per le richieste di questo mese è scaduto il ' + dl + '. Per un cambio parla con il referente.</p>';
+    h += '<p class="note">Ogni turno può avere a casa al massimo ' + (cap() < Infinity ? '<b>' + cap() + '</b> dipendenti (il ' +
+      esc(st.roster.maxRequestPercent) + '% del personale)' : 'tutti i dipendenti') +
+      ': il riposo per tutta la giornata conta in tutti i turni del giorno. I permessi 104 hanno la precedenza: ' +
+      'se il turno è al completo prendono il posto dell\'ultimo riposo chiesto.</p>';
+    monthBumps.forEach(function (b) {
+      h += '<p class="staff-alert">Il tuo riposo del ' + fmtDay(b.day) + (b.part ? ' (solo ' + PART_NAME[b.part] + ')' : '') +
+        ' è stato annullato: il turno era al completo e un collega ha chiesto un permesso 104, che ha la precedenza.' +
+        (canEdit ? ' Puoi scegliere un altro giorno.' : '') + '</p>';
+    });
     if (self) {
       h += '<div class="req-tools">' +
         '<button type="button" class="tool cell-R' + (st.tool === 'R' ? ' active' : '') + '" data-tool="R"' +
-        (canEdit ? '' : ' disabled') + '>R <small>riposo · ' + usedR + '/' + maxR + '</small></button>' +
+        (canEdit ? '' : ' disabled') + '>R <small>' + (withParts ? 'tutta la giornata' : 'riposo') + ' · ' + usedR + '/' + maxR + '</small></button>' +
+        (withParts ? ['G', 'N'].map(function (p) {
+          return '<button type="button" class="tool cell-R part' + (st.tool === 'R' + p ? ' active' : '') + '" data-tool="R' + p + '"' +
+            (canEdit ? '' : ' disabled') + '>R<sub>' + p + '</sub> <small>solo ' + PART_NAME[p] + '</small></button>';
+        }).join('') : '') +
         (self.has104 ? '<button type="button" class="tool cell-P' + (st.tool === 'P' ? ' active' : '') + '" data-tool="P"' +
           (canEdit ? '' : ' disabled') + '>104 <small>permesso · ' + usedP + '/' + maxP + '</small></button>' : '') +
         '</div>';
     }
     var byEmp = {};
-    st.requests.forEach(function (r) {
-      if (r.day.slice(0, 7) !== key) return;
-      (byEmp[r.employee_id] = byEmp[r.employee_id] || {})[r.day] = r.kind;
-    });
+    var monthList = st.requests.filter(function (r) { return r.day.slice(0, 7) === key; });
+    monthList.forEach(function (r) { (byEmp[r.employee_id] = byEmp[r.employee_id] || {})[r.day] = r; });
     h += '<div class="grid-wrap"><table class="grid staff-grid">' + headRow(days) + '<tbody>' +
       (st.roster.employees || []).map(function (e) {
         var isMe = self && e.id === self.id;
         return '<tr' + (isMe ? ' class="mine"' : '') + '>' + nameCell(e, isMe) + days.map(function (k) {
-          var kind = (byEmp[e.id] || {})[k] || '', wd = R.weekday(k);
-          var text = kind === 'P' ? '104' : kind;
-          return '<td class="cell' + (kind ? ' cell-' + kind : '') + (wd >= 5 ? ' weekend' : '') + (wd === 0 ? ' monday' : '') +
+          var r = (byEmp[e.id] || {})[k], kind = r ? r.kind : '', wd = R.weekday(k);
+          var text = kind === 'P' ? '104' : kind + (r && r.part ? '<sub>' + r.part + '</sub>' : '');
+          return '<td class="cell' + (kind ? ' cell-' + kind : '') + (r && r.part ? ' part' : '') + (wd >= 5 ? ' weekend' : '') +
+            (wd === 0 ? ' monday' : '') +
             (isMe && canEdit ? ' editable' : '') + '"' + (isMe && canEdit ? ' data-day="' + k + '" tabindex="0"' : '') +
-            (kind ? ' title="' + esc(kind === 'A' ? 'Assente' : CODE_TEXT[kind]) + '"' : '') + '>' + text + '</td>';
+            (r ? ' title="' + esc(reqText(r)) + '"' : '') + '>' + text + '</td>';
         }).join('') + '</tr>';
-      }).join('') + '</tbody></table></div>';
+      }).join('') + '</tbody>' + loadRows(days, monthList) + '</table></div>';
     h += '<p class="note">Vedi anche le richieste dei colleghi (i permessi 104 degli altri compaiono come "A"). ' +
       'Le richieste non sono garantite: le valuta il referente quando prepara i turni.</p></section>';
     return h;
@@ -263,21 +317,43 @@
     var key = O.monthKey(st.y, st.m), self = me();
     if (!self || st.busy) return;
     var current = requestsOf(self.id, key).filter(function (r) { return r.day === day; })[0];
-    var kind = current && current.kind === st.tool ? null : st.tool;
+    var tool = TOOLS[st.tool] || TOOLS.R;
+    // con un solo turno nel giorno la richiesta vale per la giornata
+    var part = tool.part && partsOf(day).length > 1 ? tool.part : null;
+    var same = current && current.kind === tool.kind && (current.part || null) === part;
+    var kind = same ? null : tool.kind;
+    var bumped = 0;
     st.busy = true;
-    st.sb.rpc('set_request', { p_day: day, p_kind: kind }).then(function (r) {
+    st.sb.rpc('set_request', { p_day: day, p_kind: kind, p_part: kind ? part : null }).then(function (r) {
       if (r.error) throw r.error;
+      bumped = (r.data && r.data.bumped) || 0;
       return load();
     }).then(function () {
       st.busy = false;
       render();
-      toast(kind ? (kind === 'R' ? 'Richiesta di riposo' : 'Permesso 104') + ' inserito per il ' + fmtDay(day) + '.'
-        : 'Richiesta del ' + fmtDay(day) + ' tolta.');
+      if (!kind) return toast('Richiesta del ' + fmtDay(day) + ' tolta.');
+      var what = kind === 'P' ? 'Permesso 104 inserito' : 'Richiesta di riposo inserita' +
+        (part ? ' (solo ' + PART_NAME[part] + ')' : tool.part ? ' (quel giorno c\'è un solo turno: vale per la giornata)' : '');
+      toast(what + ' per il ' + fmtDay(day) + '.' + (bumped ? ' Il turno era al completo: ' +
+        (bumped === 1 ? 'il riposo chiesto per ultimo da un collega è stato annullato' : bumped + ' riposi di colleghi sono stati annullati') +
+        ' e verrà avvisato via mail.' : ''));
+      if (bumped) notifyBumped();
     }).catch(function (e) {
       st.busy = false;
       toast(errText(e), true);
       load().then(render);
     });
+  }
+
+  // Mail ai colleghi a cui il permesso 104 ha annullato il riposo (la manda il server).
+  function notifyBumped() {
+    st.sb.auth.getSession().then(function (s) {
+      return fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s.data.session && s.data.session.access_token) },
+        body: JSON.stringify({ type: 'bumped', unit_id: st.unitId })
+      });
+    }).catch(function () { /* il collega lo vede comunque nella sua pagina */ });
   }
 
   function bind() {
@@ -310,7 +386,7 @@
     start: function (opts) {
       var now = new Date();
       st = { sb: opts.sb, profile: opts.profile, unitId: opts.unitId, unitName: opts.unitName || '', roster: { employees: [] }, requests: [],
-        published: {}, y: now.getFullYear(), m: now.getMonth() + 1, tool: 'R', loadedAt: 0 };
+        published: {}, bumps: [], plan: { settings: {} }, y: now.getFullYear(), m: now.getMonth() + 1, tool: 'R', loadedAt: 0 };
       document.body.classList.add('staff-mode');
       $('#staff-view').hidden = false;
       bind();

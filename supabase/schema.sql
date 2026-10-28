@@ -9,7 +9,8 @@
 --   units      Unità di appartenenza (gestite dall'amministratore)
 --   profiles   dati degli utenti: nome, cognome, unità, ruolo, attivo, admin
 --   unit_data  i turni di ciascuna unità (tutto il tabellone in JSON)
---   requests   richieste di riposo e permessi 104 inseriti dai dipendenti
+--   requests   richieste di riposo (anche per un solo turno) e permessi 104 inseriti dai dipendenti
+--   request_bumps  riposi annullati da un permesso 104 (giornata al completo)
 --   published  i turni del mese resi pubblici per i dipendenti (copia "fotografata")
 -- Regole:
 --   - ci si può registrare solo con un indirizzo @critn.it (controllo nel database)
@@ -17,7 +18,8 @@
 --     unità non lo approva; referenti e vice li crea l'amministratore (invito o cambio di ruolo)
 --   - referenti e vice referenti vedono e modificano solo i turni della propria unità
 --   - i dipendenti, dopo l'approvazione del referente, vedono solo i turni pubblicati
---     e le richieste; inseriscono le proprie richieste entro il giorno limite
+--     e le richieste; inseriscono le proprie richieste dal 1° al giorno limite del mese prima
+--     (al massimo il 25% dei dipendenti a casa per turno; il permesso 104 ha la precedenza)
 --   - l'amministratore gestisce unità e utenti e vede tutte le unità
 -- =====================================================================
 
@@ -285,26 +287,6 @@ returns integer language sql stable security definer set search_path = public as
     from public.unit_data where unit_id = p_unit), p_default)
 $$;
 
--- Elenco dei dipendenti dell'unità (solo nome, qualifica e diritto alla 104) e regole per le
--- richieste: serve ai dipendenti, che non possono leggere i turni in lavorazione.
-create or replace function public.unit_roster(p_unit uuid)
-returns jsonb language sql stable security definer set search_path = public as $$
-  select case when p_unit = public.my_unit() or public.is_admin() then jsonb_build_object(
-    'employees', coalesce((
-      select jsonb_agg(jsonb_build_object(
-        'id', e ->> 'id', 'name', e ->> 'name', 'role', e ->> 'role', 'shortName', e ->> 'shortName',
-        'has104', coalesce((e ->> 'has104')::boolean, false)) order by ord)
-      from public.unit_data d, jsonb_array_elements(d.data -> 'employees') with ordinality as x(e, ord)
-      where d.unit_id = p_unit and coalesce((e ->> 'active')::boolean, true)), '[]'::jsonb),
-    'maxRestRequests', public.unit_setting(p_unit, 'maxRestRequests', 4),
-    'requestDeadlineDay', public.unit_setting(p_unit, 'requestDeadlineDay', 15),
-    'perm104PerMonth', public.unit_setting(p_unit, 'perm104PerMonth', 3))
-  end
-$$;
-
-revoke all on function public.unit_roster(uuid) from public, anon;
-grant execute on function public.unit_roster(uuid) to authenticated;
-
 -- ---------- Richieste dei dipendenti (riposo R e permesso 104 P) ----------
 
 create table if not exists public.requests (
@@ -317,6 +299,22 @@ create table if not exists public.requests (
   created_at timestamptz not null default now(),
   unique (unit_id, employee_id, day)
 );
+-- Riposo per un solo turno: G = a casa di giorno, N = a casa la notte (vuoto = tutta la giornata).
+alter table public.requests add column if not exists part text check (part in ('G', 'N'));
+
+-- Riposi annullati da un permesso 104 (la giornata o il turno erano al completo): il dipendente
+-- lo vede nella sua pagina e riceve una mail.
+create table if not exists public.request_bumps (
+  id uuid primary key default gen_random_uuid(),
+  unit_id uuid not null references public.units (id) on delete cascade,
+  employee_id text not null,
+  day date not null,
+  kind text not null,
+  part text,
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  notified_at timestamptz
+);
 
 create table if not exists public.published (
   unit_id uuid not null references public.units (id) on delete cascade,
@@ -328,6 +326,7 @@ create table if not exists public.published (
 );
 
 alter table public.requests enable row level security;
+alter table public.request_bumps enable row level security;
 alter table public.published enable row level security;
 
 -- Richieste: il referente le vede tutte e può cancellarle (rifiutarle); il dipendente vede le sue.
@@ -341,6 +340,13 @@ create policy requests_manager_delete on public.requests for delete to authentic
 revoke insert, update, delete on public.requests from anon, authenticated;
 grant select, delete on public.requests to authenticated;
 
+-- Riposi annullati: il dipendente vede i suoi, il referente quelli dell'unità; li scrive solo set_request.
+drop policy if exists request_bumps_read on public.request_bumps;
+create policy request_bumps_read on public.request_bumps for select to authenticated
+  using (public.is_manager_of(unit_id) or (unit_id = public.my_unit() and employee_id = public.my_employee_id()));
+revoke all on public.request_bumps from anon, authenticated;
+grant select on public.request_bumps to authenticated;
+
 -- Turni pubblicati: li leggono tutti gli utenti attivi dell'unità; li scrive il referente.
 drop policy if exists published_read on public.published;
 create policy published_read on public.published for select to authenticated
@@ -351,7 +357,14 @@ create policy published_write on public.published for all to authenticated
 revoke all on public.published from anon;
 grant select, insert, update, delete on public.published to authenticated;
 
+-- Oggi (ora italiana): le finestre delle richieste si contano da qui.
+create or replace function public.request_today()
+returns date language sql stable as $$
+  select (now() at time zone 'Europe/Rome')::date
+$$;
+
 -- Ultimo giorno utile per le richieste di un mese: il giorno limite del mese precedente.
+-- Le richieste si aprono il primo giorno del mese precedente.
 create or replace function public.request_deadline(p_unit uuid, p_month date)
 returns date language sql stable security definer set search_path = public as $$
   select (date_trunc('month', p_month) - interval '1 month')::date
@@ -359,14 +372,50 @@ returns date language sql stable security definer set search_path = public as $$
             extract(day from date_trunc('month', p_month) - interval '1 day')::integer) - 1
 $$;
 
+-- Turni previsti in un giorno, divisi in G (di giorno) e N (passano la mezzanotte), dalle ambulanze
+-- del tabellone (senza ambulanze: G 07–19 e N 19–07 tutti i giorni, come nell'app).
+create or replace function public.day_parts(p_unit uuid, p_day date)
+returns text[] language sql stable security definer set search_path = public as $$
+  with amb as (
+    select coalesce((
+      select d.data -> 'settings' -> 'ambulances' from public.unit_data d
+      where d.unit_id = p_unit and jsonb_typeof(d.data -> 'settings' -> 'ambulances') = 'array'
+        and jsonb_array_length(d.data -> 'settings' -> 'ambulances') > 0),
+      '[{"shifts":[{"start":"07:00","end":"19:00"},{"start":"19:00","end":"07:00"}]}]'::jsonb) as list
+  ), sh as (
+    select s from amb, jsonb_array_elements(amb.list) a,
+      jsonb_array_elements(case when jsonb_typeof(a -> 'shifts') = 'array' then a -> 'shifts' else '[]' end) s
+    where s ->> 'start' ~ '^\d{1,2}:\d{2}$' and s ->> 'end' ~ '^\d{1,2}:\d{2}$'
+      and (coalesce(jsonb_typeof(s -> 'days'), '') <> 'array' or jsonb_array_length(s -> 'days') <> 7
+        or coalesce((s -> 'days' ->> (extract(isodow from p_day)::integer - 1))::boolean, false))
+  )
+  select coalesce(array_agg(distinct
+    case when split_part(s ->> 'end', ':', 1)::integer * 60 + split_part(s ->> 'end', ':', 2)::integer
+           <= split_part(s ->> 'start', ':', 1)::integer * 60 + split_part(s ->> 'start', ':', 2)::integer
+         then 'N' else 'G' end), '{}')
+  from sh
+$$;
+
+-- Quante richieste al massimo per turno in un giorno: la percentuale (25%) dei dipendenti attivi,
+-- almeno una. Null = nessun limite (percentuale 0).
+create or replace function public.request_cap(p_unit uuid)
+returns integer language sql stable security definer set search_path = public as $$
+  select case when public.unit_setting(p_unit, 'maxRequestPercent', 25) <= 0 then null
+    else greatest(1, floor((select count(*) from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
+      where d.unit_id = p_unit and coalesce((e ->> 'active')::boolean, true))
+      * least(public.unit_setting(p_unit, 'maxRequestPercent', 25), 100) / 100.0)::integer) end
+$$;
+
 -- Richieste dell'unità in un periodo, per i dipendenti: i permessi 104 dei colleghi compaiono
 -- solo come "A" (assente), senza il motivo.
-create or replace function public.unit_requests(p_unit uuid, p_from date, p_to date)
-returns table (employee_id text, day date, kind text) language sql stable security definer
+drop function if exists public.unit_requests(uuid, date, date);
+create function public.unit_requests(p_unit uuid, p_from date, p_to date)
+returns table (employee_id text, day date, kind text, part text) language sql stable security definer
 set search_path = public as $$
   select r.employee_id, r.day,
     case when r.kind = 'P' and r.employee_id is distinct from public.my_employee_id()
-      and not public.is_manager_of(p_unit) then 'A' else r.kind end
+      and not public.is_manager_of(p_unit) then 'A' else r.kind end,
+    r.part
   from public.requests r
   where r.unit_id = p_unit and r.day between p_from and p_to
     and (p_unit = public.my_unit() or public.is_admin())
@@ -375,18 +424,34 @@ $$;
 revoke all on function public.unit_requests(uuid, date, date) from public, anon;
 grant execute on function public.unit_requests(uuid, date, date) to authenticated;
 
--- Il dipendente inserisce (p_kind 'R' o 'P') o toglie (p_kind null) una sua richiesta.
--- Controlli: giorno limite, mese non ancora pubblicato, massimo riposi al mese, 104 solo se ne
--- ha diritto e nel limite mensile.
-create or replace function public.set_request(p_day date, p_kind text)
-returns void language plpgsql security definer set search_path = public as $$
+-- Il dipendente inserisce (p_kind 'R' o 'P') o toglie (p_kind null) una sua richiesta; p_part 'G' o 'N'
+-- chiede il riposo per un solo turno (solo nei giorni con turni di giorno e di notte, altrimenti vale
+-- per la giornata).
+-- Controlli: finestra (dal 1° al giorno limite del mese prima), mese non ancora pubblicato, massimo
+-- riposi al mese, 104 solo se ne ha diritto e nel limite mensile, massimo il 25% dei dipendenti a casa
+-- per ogni turno. Il permesso 104 ha la precedenza: se il turno è al completo annulla il riposo chiesto
+-- per ultimo (che finisce in request_bumps); se è al completo di soli 104 non entra.
+-- Restituisce { bumped: quanti riposi ha annullato }.
+drop function if exists public.set_request(date, text);
+create or replace function public.set_request(p_day date, p_kind text, p_part text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   me public.profiles;
   month_start date := date_trunc('month', p_day)::date;
   month_key text := to_char(p_day, 'YYYY-MM');
-  today date := (now() at time zone 'Europe/Rome')::date;
+  today date := public.request_today();
+  opening date := (date_trunc('month', p_day) - interval '1 month')::date;
+  deadline date;
   used integer;
   emp jsonb;
+  parts text[];
+  covered text[];
+  b text;
+  n integer;
+  cap integer;
+  victim public.requests;
+  bumped integer := 0;
+  part_text jsonb := '{"G": " per il turno di giorno", "N": " per il turno di notte"}';
 begin
   select * into me from public.profiles where id = auth.uid();
   if me.id is null or not me.active or me.role <> 'dipendente' or me.unit_id is null
@@ -396,9 +461,17 @@ begin
   if p_kind is not null and p_kind not in ('R', 'P') then
     raise exception 'Tipo di richiesta non valido' using errcode = 'check_violation';
   end if;
-  if today > public.request_deadline(me.unit_id, month_start) then
+  if p_part is not null and p_part not in ('G', 'N') then
+    raise exception 'Turno non valido' using errcode = 'check_violation';
+  end if;
+  deadline := public.request_deadline(me.unit_id, month_start);
+  if today < opening then
+    raise exception 'Le richieste per questo mese si potranno inserire dal % al %',
+      to_char(opening, 'DD/MM/YYYY'), to_char(deadline, 'DD/MM/YYYY') using errcode = 'check_violation';
+  end if;
+  if today > deadline then
     raise exception 'Termine scaduto: le richieste per questo mese si potevano inserire fino al %',
-      to_char(public.request_deadline(me.unit_id, month_start), 'DD/MM/YYYY') using errcode = 'check_violation';
+      to_char(deadline, 'DD/MM/YYYY') using errcode = 'check_violation';
   end if;
   select e into emp from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
     where d.unit_id = me.unit_id and e ->> 'id' = me.employee_id;
@@ -409,11 +482,17 @@ begin
     raise exception 'I turni di questo mese sono già pubblicati: per cambiare chiedi al referente'
       using errcode = 'check_violation';
   end if;
-  perform pg_advisory_xact_lock(hashtext(me.unit_id::text || '|' || me.employee_id));
+  -- un'unità alla volta: i conteggi del 25% non si accavallano
+  perform pg_advisory_xact_lock(hashtext('richieste|' || me.unit_id::text));
   if p_kind is null then
     delete from public.requests where unit_id = me.unit_id and employee_id = me.employee_id and day = p_day;
-    return;
+    return jsonb_build_object('bumped', 0);
   end if;
+
+  parts := public.day_parts(me.unit_id, p_day);
+  -- il 104 vale per tutta la giornata; con un solo tipo di turno anche il riposo
+  if p_kind = 'P' or cardinality(parts) < 2 then p_part := null; end if;
+
   select count(*) into used from public.requests
     where unit_id = me.unit_id and employee_id = me.employee_id and kind = p_kind and day <> p_day
       and day >= month_start and day < (month_start + interval '1 month');
@@ -430,15 +509,73 @@ begin
         used, public.unit_setting(me.unit_id, 'perm104PerMonth', 3) using errcode = 'check_violation';
     end if;
   end if;
-  insert into public.requests (unit_id, employee_id, day, kind, created_by)
-    values (me.unit_id, me.employee_id, p_day, p_kind, auth.uid())
-    on conflict (unit_id, employee_id, day) do update set kind = excluded.kind, created_by = excluded.created_by,
-      created_at = now();
+
+  -- massimo per turno: una richiesta per la giornata conta in tutti i turni del giorno
+  cap := public.request_cap(me.unit_id);
+  if cap is not null then
+    covered := case when p_part is not null then array[p_part] when cardinality(parts) = 0 then array['G'] else parts end;
+    foreach b in array covered loop
+      loop
+        select count(*) into n from public.requests
+          where unit_id = me.unit_id and day = p_day and employee_id <> me.employee_id and (part is null or part = b);
+        exit when n < cap;
+        if p_kind = 'R' then
+          raise exception 'Il giorno % è al completo%: ci sono già % richieste (massimo % per turno, il % del personale)',
+            to_char(p_day, 'DD/MM'), case when cardinality(parts) > 1 then part_text ->> b else '' end, n, cap,
+            public.unit_setting(me.unit_id, 'maxRequestPercent', 25)::text || '%' using errcode = 'check_violation';
+        end if;
+        select * into victim from public.requests
+          where unit_id = me.unit_id and day = p_day and employee_id <> me.employee_id and kind <> 'P'
+            and (part is null or part = b)
+          order by created_at desc, id desc limit 1;
+        if victim.id is null then
+          raise exception 'Il giorno % ci sono già % permessi 104: è il massimo (% per turno, il % del personale)',
+            to_char(p_day, 'DD/MM'), n, cap, public.unit_setting(me.unit_id, 'maxRequestPercent', 25)::text || '%'
+            using errcode = 'check_violation';
+        end if;
+        delete from public.requests where id = victim.id;
+        insert into public.request_bumps (unit_id, employee_id, day, kind, part, created_by)
+          values (victim.unit_id, victim.employee_id, victim.day, victim.kind, victim.part, auth.uid());
+        bumped := bumped + 1;
+      end loop;
+    end loop;
+  end if;
+
+  insert into public.requests (unit_id, employee_id, day, kind, part, created_by)
+    values (me.unit_id, me.employee_id, p_day, p_kind, p_part, auth.uid())
+    on conflict (unit_id, employee_id, day) do update set kind = excluded.kind, part = excluded.part,
+      created_by = excluded.created_by, created_at = now();
+  return jsonb_build_object('bumped', bumped);
 end;
 $$;
 
-revoke all on function public.set_request(date, text) from public, anon;
-grant execute on function public.set_request(date, text) to authenticated;
+revoke all on function public.set_request(date, text, text) from public, anon;
+grant execute on function public.set_request(date, text, text) to authenticated;
+
+-- Elenco dei dipendenti dell'unità (solo nome, qualifica e diritto alla 104), regole per le
+-- richieste e orari dei turni (per sapere quali giorni hanno giorno e notte): serve ai dipendenti, che non possono leggere i turni in lavorazione.
+create or replace function public.unit_roster(p_unit uuid)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select case when p_unit = public.my_unit() or public.is_admin() then jsonb_build_object(
+    'employees', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', e ->> 'id', 'name', e ->> 'name', 'role', e ->> 'role', 'shortName', e ->> 'shortName',
+        'has104', coalesce((e ->> 'has104')::boolean, false)) order by ord)
+      from public.unit_data d, jsonb_array_elements(d.data -> 'employees') with ordinality as x(e, ord)
+      where d.unit_id = p_unit and coalesce((e ->> 'active')::boolean, true)), '[]'::jsonb),
+    'maxRestRequests', public.unit_setting(p_unit, 'maxRestRequests', 4),
+    'requestDeadlineDay', public.unit_setting(p_unit, 'requestDeadlineDay', 15),
+    'perm104PerMonth', public.unit_setting(p_unit, 'perm104PerMonth', 3),
+    'maxRequestPercent', public.unit_setting(p_unit, 'maxRequestPercent', 25),
+    'requestCap', public.request_cap(p_unit),
+    'ambulances', (select case when jsonb_typeof(d.data -> 'settings' -> 'ambulances') = 'array'
+      then d.data -> 'settings' -> 'ambulances' else '[]'::jsonb end
+      from public.unit_data d where d.unit_id = p_unit))
+  end
+$$;
+
+revoke all on function public.unit_roster(uuid) from public, anon;
+grant execute on function public.unit_roster(uuid) to authenticated;
 
 -- =====================================================================
 -- DOPO la tua registrazione, rendi amministratore il tuo utente

@@ -5,6 +5,9 @@
  * - Le richieste (riposo R, permesso 104 P) arrivano dal server ed entrano nel tabellone del
  *   referente come caselle R/P "da richiesta" (segnate in state.reqTags), senza mai togliere
  *   un turno scritto a mano: in quel caso c'è un conflitto da risolvere.
+ * - Il riposo può riguardare un solo turno (part G = a casa di giorno, N = a casa la notte): la casella
+ *   non cambia, si tolgono solo i turni automatici di quella parte (state.reqTags 'R:G' / 'R:N').
+ * - Al massimo il 25% dei dipendenti a casa per turno (la giornata intera conta in tutti i turni).
  * - La pubblicazione è una copia del mese per i dipendenti: malattia e 104 compaiono come
  *   assenza generica (A), senza il motivo.
  */
@@ -24,6 +27,27 @@
     var last = R.daysInMonth(py, pm);
     return R.toKey(py, pm, Math.min(Math.max(+day || 15, 1), last));
   }
+
+  // Primo giorno per le richieste del mese (y, m): il 1° del mese precedente.
+  function requestOpening(y, m) {
+    return m === 1 ? R.toKey(y - 1, 12, 1) : R.toKey(y, m - 1, 1);
+  }
+
+  // Quante richieste al massimo per turno: la percentuale dei dipendenti attivi, almeno una
+  // (Infinity con percentuale 0 = nessun limite). Come request_cap nel database.
+  function requestCap(employees, percent) {
+    var pct = percent == null ? 25 : +percent;
+    if (!(pct > 0)) return Infinity;
+    return Math.max(1, Math.floor(employees * Math.min(pct, 100) / 100));
+  }
+
+  // Richieste (di chiunque, 104 compresi) che tengono a casa qualcuno nella parte `part` del giorno.
+  function partLoad(list, day, part) {
+    return (list || []).filter(function (r) { return r.day === day && (!r.part || r.part === part); }).length;
+  }
+
+  // Segno della richiesta nel tabellone: 'R', 'P' o, per un solo turno, 'R:G' / 'R:N'.
+  function requestTag(r) { return r.kind + (r.part ? ':' + r.part : ''); }
 
   // ---------- Pubblicazione ----------
 
@@ -111,12 +135,32 @@
     }
   }
 
+  // Toglie dalla casella i turni automatici della parte `part` (G/N); restituisce quanti ne ha tolti.
+  function dropAutoPart(state, empId, key, part) {
+    var ids = R.shiftIdsOn(state, empId, key);
+    var autoIds = R.autoIdsOn(state, empId, key);
+    var drop = ids.filter(function (id) { return autoIds.indexOf(id) >= 0 && R.shiftPart(R.shiftInfo(state, id)) === part; });
+    if (!drop.length) return 0;
+    var keep = ids.filter(function (id) { return drop.indexOf(id) < 0; });
+    var keepAuto = autoIds.filter(function (id) { return drop.indexOf(id) < 0; });
+    if (keep.length) state.assignments[empId][key] = R.shiftEntry(keep);
+    else delete state.assignments[empId][key];
+    if (state.auto && state.auto[empId]) {
+      if (keepAuto.length) state.auto[empId][key] = keepAuto.length === keep.length ? true : keepAuto;
+      else delete state.auto[empId][key];
+    }
+    return drop.length;
+  }
+
   /*
-   * Porta le richieste del server nel tabellone. `list`: [{ id, employee_id, day, kind }].
+   * Porta le richieste del server nel tabellone. `list`: [{ id, employee_id, day, kind, part }].
+   * Giornata intera (R, P):
    * - casella vuota o con soli turni automatici → diventa R/P (segnata come richiesta);
    * - richiesta tolta dal dipendente → la casella R/P che aveva creato si svuota;
    * - casella con un turno scritto a mano o bloccata → conflitto (non si tocca nulla);
    * - casella già con ferie, malattia, formazione… → il dipendente non lavora comunque: nulla da fare.
+   * Un solo turno (R con part G/N): si tolgono i turni automatici di quella parte e la casella resta
+   * segnata; un turno di quella parte scritto a mano (o in una casella bloccata) è un conflitto.
    * Restituisce { changed, added, removed, conflicts }.
    */
   function syncRequests(state, list) {
@@ -131,10 +175,10 @@
 
     Object.keys(state.reqTags || {}).forEach(function (empId) {
       Object.keys(state.reqTags[empId]).forEach(function (key) {
-        var kind = state.reqTags[empId][key];
+        var tag = state.reqTags[empId][key];
         var r = want[empId] && want[empId][key];
-        if (r && r.kind === kind) return;
-        if (R.codeOn(state, empId, key) === kind && !R.isLocked(state, empId, key)) {
+        if (r && requestTag(r) === tag) return;
+        if (tag.indexOf(':') < 0 && R.codeOn(state, empId, key) === tag && !R.isLocked(state, empId, key)) {
           delete state.assignments[empId][key];
           out.removed++;
         }
@@ -149,13 +193,29 @@
       if (!state.assignments[empId]) state.assignments[empId] = {};
       var entry = state.assignments[empId][key];
       var code = R.codeOf(entry);
+      var tag = requestTag(r);
+      var ids = R.shiftIdsOf(state, entry);
+      var autoIds = R.autoIdsOn(state, empId, key);
+
+      if (r.part) {
+        var hit = ids.filter(function (id) { return R.shiftPart(R.shiftInfo(state, id)) === r.part; });
+        var manual = hit.filter(function (id) { return autoIds.indexOf(id) < 0; });
+        if (!code && hit.length && (manual.length || R.isLocked(state, empId, key))) {
+          out.conflicts.push({ request: r, empId: empId, day: key, kind: r.kind, part: r.part, shifts: hit });
+          return;
+        }
+        var fresh = tagOf(state, empId, key) !== tag;
+        if (fresh) setTag(state, empId, key, tag);
+        if (!code && dropAutoPart(state, empId, key, r.part)) fresh = true;
+        if (fresh) { out.added++; out.changed = true; }
+        return;
+      }
+
       if (code === r.kind) {
         if (tagOf(state, empId, key) !== r.kind) { setTag(state, empId, key, r.kind); out.changed = true; }
         return;
       }
       if (code) return;
-      var ids = R.shiftIdsOf(state, entry);
-      var autoIds = R.autoIdsOn(state, empId, key);
       var onlyAuto = ids.every(function (id) { return autoIds.indexOf(id) >= 0; });
       if (R.isLocked(state, empId, key) || !onlyAuto) {
         out.conflicts.push({ request: r, empId: empId, day: key, kind: r.kind, shifts: ids });
@@ -173,6 +233,10 @@
   var Online = {
     monthKey: monthKey,
     requestDeadline: requestDeadline,
+    requestOpening: requestOpening,
+    requestCap: requestCap,
+    partLoad: partLoad,
+    requestTag: requestTag,
     buildSnapshot: buildSnapshot,
     sameSnapshot: sameSnapshot,
     syncRequests: syncRequests,

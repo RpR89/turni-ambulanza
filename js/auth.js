@@ -596,13 +596,14 @@
           var unitOpts = '<option value="">— nessuna —</option>' + ctx.units.map(function (x) {
             return '<option value="' + esc(x.id) + '"' + (x.id === u.unit_id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
           }).join('');
-          return '<tr data-user="' + esc(u.id) + '" data-name="' + esc(u.last_name + ' ' + u.first_name) + '">' +
+          return '<tr data-user="' + esc(u.id) + '" data-role="' + esc(u.role) + '" data-name="' + esc(u.last_name + ' ' + u.first_name) + '">' +
             '<td><input data-f="last_name" value="' + esc(u.last_name) + '" maxlength="80" aria-label="Cognome"></td>' +
             '<td><input data-f="first_name" value="' + esc(u.first_name) + '" maxlength="80" aria-label="Nome"></td>' +
             '<td>' + esc(u.email) + '</td>' +
             '<td><select data-f="unit_id"' + (isCoordinator(u.role) ? ' disabled title="Il coordinatore non appartiene a nessuna unità"' : '') +
             '>' + unitOpts + '</select></td>' +
-            '<td><select data-f="role">' + Object.keys(ROLES).map(function (k) {
+            '<td><select data-f="role"' + (u.id === me ? ' disabled title="Il tuo ruolo lo cambia un altro amministratore"' : '') +
+            '>' + Object.keys(ROLES).map(function (k) {
               return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + ROLES[k] + '</option>';
             }).join('') + '</select></td>' +
             '<td>' + (isPending(u)
@@ -692,6 +693,12 @@
         '?\nNon apparterrà più a nessuna unità e diventerà amministratore: potrà gestire unità e utenti e vedere i turni di tutte le unità.')) {
         return loadUsers();
       }
+      var wasCoord = f === 'role' && isCoordinator(tr.getAttribute('data-role'));
+      if (wasCoord && !isCoordinator(ev.target.value) && !confirm(name + ' non sarà più ' +
+        ROLES[tr.getAttribute('data-role')].toLowerCase() + ' e perderà i diritti di amministratore.\n' +
+        'Se deve restare amministratore, spunta poi la casella "Amministratore". Continuare?')) {
+        return loadUsers();
+      }
       if (f === 'is_admin' && !confirm(ev.target.checked
         ? 'Nominare ' + name + ' amministratore?\nPotrà gestire unità e utenti (anche nominare o togliere altri amministratori) e vedere i turni di tutte le unità.'
         : 'Togliere a ' + name + ' i diritti di amministratore?')) {
@@ -701,14 +708,12 @@
       var patch = {};
       patch[f] = ev.target.type === 'checkbox' ? ev.target.checked
         : f === 'first_name' || f === 'last_name' ? ev.target.value : (ev.target.value || null);
-      sb.from('profiles').update(patch).eq('id', tr.getAttribute('data-user')).then(function (r) {
+      sb.from('profiles').update(patch).eq('id', tr.getAttribute('data-user')).select('id').then(function (r) {
         if (r.error) { toast(translateError(r.error), true); return loadUsers(); }
+        // nessuna riga cambiata: le regole del database non lo permettono (per esempio non sei più amministratore)
+        if (!r.data || !r.data.length) { toast('Modifica non consentita: ricarica la pagina.', true); return loadUsers(); }
         toast('Utente aggiornato.');
         if (f === 'role' || f === 'first_name' || f === 'last_name') loadUsers();
-        if (f === 'role' && tr.getAttribute('data-user') === ctx.profile.id) {
-          ctx.profile.role = patch.role;
-          renderUserBar();
-        }
         if ((f === 'first_name' || f === 'last_name') && tr.getAttribute('data-user') === ctx.profile.id) {
           ctx.profile[f] = patch[f];
           renderUserBar();
@@ -737,14 +742,15 @@
             unit_id: isCoordinator(f.role.value) ? '' : f.unit.value, role: f.role.value })
         });
       }).then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (j) { return { ok: res.ok, body: j }; });
+        return res.json().catch(function () { return {}; }).then(function (j) { return { ok: res.ok, status: res.status, body: j }; });
       }).then(function (r) {
         busy(f, false);
-        if (!r.ok) return toast(r.body.error || 'Invito non riuscito.', true);
+        inviteUnit();
+        if (!r.ok) { if (r.status === 502) setTimeout(loadUsers, 1500); return toast(r.body.error || 'Invito non riuscito.', true); }
         f.reset();
         toast('Invito inviato a ' + email + ': riceverà una mail per scegliere la password.', true);
         setTimeout(loadUsers, 1500);
-      }).catch(function (e) { busy(f, false); toast(translateError(e), true); });
+      }).catch(function (e) { busy(f, false); inviteUnit(); toast(translateError(e), true); });
     });
   }
 

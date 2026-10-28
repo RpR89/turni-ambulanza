@@ -63,9 +63,16 @@
   }
 
   // Settimane del tabellone: quelle che iniziano con un lunedì del mese (es. ottobre 2026:
-  // da lunedì 5 ottobre a domenica 1 novembre).
-  function tabelloneDays(Rules, y, m) {
+  // da lunedì 5 ottobre a domenica 1 novembre). Con `whole` (copia dei turni pubblicati) tutte le
+  // settimane che toccano il mese, così ci sono tutti i suoi giorni (es. dal 28 settembre).
+  function tabelloneDays(Rules, y, m, whole) {
     var days = [];
+    if (whole) {
+      var month = Rules.monthDays(y, m);
+      var d = Rules.weekStart(month[0]), end = Rules.addDays(Rules.weekStart(month[month.length - 1]), 6);
+      for (; d <= end; d = Rules.addDays(d, 1)) days.push(d);
+      return days;
+    }
     Rules.monthDays(y, m).forEach(function (k) {
       if (Rules.weekday(k) === 0) for (var i = 0; i < 7; i++) days.push(Rules.addDays(k, i));
     });
@@ -73,7 +80,10 @@
   }
 
   // Contenuto del tabellone, separato dalla grafica (usato anche dai test).
-  function tabelloneRows(Rules, state, y, m) {
+  // `whole`: tutte le settimane del mese, con vuoti i giorni degli altri mesi (non fanno parte dei turni
+  // del mese: per esempio una pubblicazione non mostra i turni ancora in preparazione del mese dopo).
+  function tabelloneRows(Rules, state, y, m, whole) {
+    var monthKey = y + '-' + (m < 10 ? '0' : '') + m;
     var emps = (state.employees || []).filter(function (e) { return e.active !== false; });
     var defaults = defaultShortNames(emps);
     var name = function (e) { return shortNameOf(e, defaults); };
@@ -99,13 +109,16 @@
       prevSlots[kind] = out;
       return out;
     }
-    return tabelloneDays(Rules, y, m).map(function (k) {
+    return tabelloneDays(Rules, y, m, whole).map(function (k) {
       var p = k.split('-');
+      var outside = whole && k.slice(0, 7) !== monthKey;
       var withCode = function (codes) {
+        if (outside) return [];
         return emps.filter(function (e) { return codes.indexOf(Rules.codeOn(state, e.id, k)) >= 0; }).map(name);
       };
       var shifts = {};
       Rules.shiftCatalog(state).list.forEach(function (sh) {
+        if (outside) { shifts[sh.id] = []; return; }
         // prima gli autisti (dipendenti, poi volontari), poi gli altri; i volontari senza nome
         var staff = byDriverThenOrder(Rules.staffOn(state, k, sh.id));
         var vol = Rules.volunteersOn(state, k, sh.id);
@@ -136,7 +149,7 @@
   function buildWorkbook(ExcelJS, Rules, state, y, m, opts) {
     opts = opts || {};
     var title = (state.settings && state.settings.tabelloneTitle) || DEFAULT_TITLE;
-    var rows = tabelloneRows(Rules, state, y, m);
+    var rows = tabelloneRows(Rules, state, y, m, opts.wholeMonth);
     var L = layoutFor(Rules, state);
     var START = L.start, LAST_COL = L.lastCol, MEDIUM_LEFT = L.mediumLeft;
 

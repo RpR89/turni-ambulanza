@@ -10,7 +10,7 @@ function fakeRes() {
 }
 
 // Supabase finto: utente chiamante, profilo e invito.
-function withSupabase({ admin = true, active = true, inviteStatus = 200 } = {}, fn) {
+function withSupabase({ admin = true, active = true, inviteStatus = 200, patchStatus = 200 } = {}, fn) {
   const calls = [];
   const orig = global.fetch;
   process.env.SUPABASE_URL = 'https://x.supabase.co';
@@ -20,6 +20,9 @@ function withSupabase({ admin = true, active = true, inviteStatus = 200 } = {}, 
     const ok = (body, status = 200) => ({ ok: status < 300, status, json: async () => body });
     if (url.endsWith('/auth/v1/user')) {
       return opts.headers.Authorization === 'Bearer good' ? ok({ id: 'u1' }) : ok({}, 401);
+    }
+    if (url.includes('/rest/v1/profiles') && opts.method === 'PATCH') {
+      return patchStatus === 200 ? ok([{ id: 'new' }]) : ok({ message: 'violates check constraint' }, patchStatus);
     }
     if (url.includes('/rest/v1/profiles')) return ok([{ is_admin: admin, active }]);
     if (url.includes('/auth/v1/invite')) {
@@ -75,4 +78,20 @@ test('invito: utente già esistente', () => withSupabase({ inviteStatus: 422 }, 
   await handler(req(good), res);
   assert.equal(res.statusCode, 409);
   assert.match(res.body.error, /Esiste già/);
+}));
+
+test('invito: coordinatore referenti senza unità', () => withSupabase({}, async (calls) => {
+  const res = fakeRes();
+  await handler(req({ ...good, unit_id: '', role: 'coordinatore' }), res);
+  assert.equal(res.statusCode, 200);
+  const sent = JSON.parse(calls.find(c => c.url.includes('/auth/v1/invite')).opts.body);
+  assert.equal(sent.data.unit_id, '');
+  assert.deepEqual(JSON.parse(calls.find(c => c.opts.method === 'PATCH').opts.body), { active: true, role: 'coordinatore' });
+}));
+
+test('invito: se il ruolo non si applica lo dice invece di "ok"', () => withSupabase({ patchStatus: 400 }, async () => {
+  const res = fakeRes();
+  await handler(req({ ...good, unit_id: '', role: 'coordinatore' }), res);
+  assert.equal(res.statusCode, 502);
+  assert.match(res.body.error, /ruolo non è stato impostato/);
 }));

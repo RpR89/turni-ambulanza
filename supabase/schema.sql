@@ -127,9 +127,10 @@ create trigger on_auth_user_created
 
 -- ---------- Funzioni di supporto per le regole ----------
 
+-- Solo un amministratore attivo: chi viene disattivato (o non è ancora approvato) perde subito ogni diritto.
 create or replace function public.is_admin()
 returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce((select is_admin from public.profiles where id = auth.uid()), false)
+  select coalesce((select is_admin and active from public.profiles where id = auth.uid()), false)
 $$;
 
 create or replace function public.my_unit()
@@ -151,7 +152,9 @@ returns text language sql stable security definer set search_path = public as $$
   select employee_id from public.profiles where id = auth.uid() and active and role = 'dipendente'
 $$;
 
--- Un utente non può cambiarsi da solo unità, ruolo, stato, collegamento o diritti di amministratore.
+-- Un utente non può cambiarsi da solo unità, ruolo, stato, collegamento o diritti di amministratore;
+-- nemmeno un amministratore può cambiare il proprio ruolo, stato o diritti (lo fa un altro amministratore).
+-- Così non si resta senza amministratori per sbaglio.
 create or replace function public.protect_profile()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
@@ -167,13 +170,20 @@ begin
         using errcode = 'insufficient_privilege';
     end if;
   end if;
-  -- Coordinatore e vice coordinatore referenti: nessuna unità e sempre amministratori. Chi smette di
-  -- esserlo perde anche i diritti di amministratore (se non vengono cambiati nello stesso momento).
+  if auth.uid() is not null and new.id = auth.uid()
+    and (new.role is distinct from old.role or new.active is distinct from old.active
+      or new.is_admin is distinct from old.is_admin) then
+    raise exception 'Non puoi cambiare il tuo ruolo, il tuo stato o i tuoi diritti: chiedilo a un altro amministratore'
+      using errcode = 'insufficient_privilege';
+  end if;
+  -- Coordinatore e vice coordinatore referenti: nessuna unità e sempre amministratori (i diritti valgono
+  -- solo finché l'account è attivo: vedi is_admin). Chi smette di esserlo perde i diritti di
+  -- amministratore: se deve restarlo, glieli si ridà dopo con la casella "Amministratore".
   if new.role in ('coordinatore', 'vice_coordinatore') then
     new.unit_id := null;
     new.is_admin := true;
     new.employee_id := null;
-  elsif old.role in ('coordinatore', 'vice_coordinatore') and new.is_admin = old.is_admin then
+  elsif old.role in ('coordinatore', 'vice_coordinatore') then
     new.is_admin := false;
   end if;
   -- La prima attivazione segna l'approvazione (così si distingue chi è in attesa da chi è disattivato).
@@ -335,6 +345,8 @@ create table if not exists public.published (
   published_by uuid references auth.users (id) on delete set null,
   primary key (unit_id, month)
 );
+-- Quando è partita la mail di avviso di questa pubblicazione (una sola volta per pubblicazione).
+alter table public.published add column if not exists notified_at timestamptz;
 
 alter table public.requests enable row level security;
 alter table public.request_bumps enable row level security;
@@ -371,7 +383,8 @@ grant select, insert, update, delete on public.published to authenticated;
 -- Dalla 3.7 il limite predefinito è il 33%: le unità con il vecchio 25% predefinito passano al 33%
 -- (requestRulesV segna i tabelloni già aggiornati, così una scelta fatta dopo resta).
 update public.unit_data
-  set data = jsonb_set(jsonb_set(data, '{settings,maxRequestPercent}', '33'), '{settings,requestRulesV}', '2')
+  set data = jsonb_set(jsonb_set(data, '{settings,maxRequestPercent}', '33'), '{settings,requestRulesV}', '2'),
+    version = version + 1, updated_at = now()
   where jsonb_typeof(data -> 'settings') = 'object' and data -> 'settings' ->> 'maxRequestPercent' = '25'
     and not (data -> 'settings' ? 'requestRulesV');
 
@@ -415,13 +428,14 @@ returns text[] language sql stable security definer set search_path = public as 
 $$;
 
 -- Quante richieste al massimo per turno in un giorno: la percentuale (33%) dei dipendenti attivi,
--- almeno una. Null = nessun limite (percentuale 0).
+-- almeno una. Il +0,05 fa valere il 33% come un terzo (12 dipendenti → 4, non 3), come in requests.js.
+-- Null = nessun limite (percentuale 0).
 create or replace function public.request_cap(p_unit uuid)
 returns integer language sql stable security definer set search_path = public as $$
   select case when public.unit_setting(p_unit, 'maxRequestPercent', 33) <= 0 then null
     else greatest(1, floor((select count(*) from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
       where d.unit_id = p_unit and coalesce((e ->> 'active')::boolean, true))
-      * least(public.unit_setting(p_unit, 'maxRequestPercent', 33), 100) / 100.0)::integer) end
+      * least(public.unit_setting(p_unit, 'maxRequestPercent', 33), 100) / 100.0 + 0.05)::integer) end
 $$;
 
 -- Richieste dell'unità in un periodo, per i dipendenti: i permessi 104 dei colleghi compaiono

@@ -99,8 +99,8 @@ async function handler(req, res) {
     (prof.unit_id === unit && (prof.role === 'referente' || prof.role === 'vice_referente')));
   if (!manager) return send(res, 403, { error: 'Solo il referente o il vice referente dell\'unità può mandare avvisi' });
 
-  const units = await rest('units?select=name&id=eq.' + unit);
-  const unitName = units[0] ? units[0].name : '';
+  // nome dell'unità: si legge insieme alle altre richieste di ciascun tipo di avviso
+  const unitNameP = rest('units?select=name&id=eq.' + unit).then(u => (u[0] ? u[0].name : ''), () => '');
   const sender = oneLine(prof.first_name + ' ' + prof.last_name, 80) || 'Referente';
   const from = { name: sender + ' (' + (ROLE_TEXT[prof.role] || 'referente') + ') – Turni Ambulanza', address: process.env.MAIL_FROM || 'turni@critn.it' };
   const site = process.env.SITE_URL || '';
@@ -110,11 +110,15 @@ async function handler(req, res) {
   if (body.type === 'published') {
     const month = String(body.month || '');
     if (!MONTH.test(month)) return send(res, 400, { error: 'Mese non valido' });
-    const pub = await rest('published?select=month&unit_id=eq.' + unit + '&month=eq.' + month);
+    const [unitName, pub, staff, coords] = await Promise.all([unitNameP,
+      rest('published?select=month,notified_at&unit_id=eq.' + unit + '&month=eq.' + month),
+      rest('profiles?select=first_name,email&role=eq.dipendente&active=eq.true&unit_id=eq.' + unit),
+      rest('profiles?select=first_name,email&active=eq.true&role=in.(coordinatore,vice_coordinatore)')]);
     if (!pub.length) return send(res, 400, { error: 'I turni di questo mese non risultano pubblicati' });
+    // una sola mail per pubblicazione (ritirandola e pubblicando di nuovo ne parte un'altra)
+    if (pub[0].notified_at) return send(res, 409, { error: 'La mail di avviso di questa pubblicazione è già partita' });
     const [y, m] = month.split('-').map(Number);
     const title = MONTHS[m - 1] + ' ' + y;
-    const staff = await rest('profiles?select=first_name,email&role=eq.dipendente&active=eq.true&unit_id=eq.' + unit);
     messages = staff.map(p => ({
       to: p.email,
       subject: 'Turni di ' + title + ' pubblicati' +
@@ -125,11 +129,12 @@ async function handler(req, res) {
         (site ? 'Puoi vederli qui: ' + site + '\n' : '') + replyNote + FOOTER
     }));
     // Coordinatore e vice coordinatore referenti: ricevono ogni pubblicazione, con il tabellone in Excel.
-    const excel = typeof body.excel === 'string' && body.excel.length <= MAX_EXCEL * 4 / 3 + 4
+    // Si allega solo un vero file Excel (.xlsx è un archivio ZIP: inizia con "PK\x03\x04").
+    let excel = typeof body.excel === 'string' && body.excel.length <= MAX_EXCEL * 4 / 3 + 4
       ? Buffer.from(body.excel, 'base64') : null;
+    if (excel && !(excel.length > 4 && excel.readUInt32LE(0) === 0x04034b50)) excel = null;
     const excelName = (oneLine(body.excel_name, 120).replace(/[\\/:*?"<>|]+/g, '') || 'Tabellone turni.xlsx')
       .replace(/(\.xlsx)?$/i, '.xlsx');
-    const coords = await rest('profiles?select=first_name,email&active=eq.true&role=in.(coordinatore,vice_coordinatore)');
     const seen = {};
     staff.forEach(p => { seen[p.email] = true; });
     coords.filter(p => p.email !== prof.email && !seen[p.email]).forEach(p => {
@@ -170,6 +175,13 @@ async function handler(req, res) {
   }
 
   const out = await deliver(messages, { from: from, replyTo: { name: sender, address: prof.email } });
+  if (body.type === 'published' && out.status === 200) {
+    await fetch(url + '/rest/v1/published?unit_id=eq.' + unit + '&month=eq.' + String(body.month), {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, admin),
+      body: JSON.stringify({ notified_at: new Date().toISOString() })
+    });
+  }
   return send(res, out.status, out.body);
 }
 

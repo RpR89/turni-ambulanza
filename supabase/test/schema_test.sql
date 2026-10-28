@@ -1,4 +1,4 @@
--- Prove dello schema: eseguire dopo mock_auth.sql e schema.sql (vedi tests/schema.test.js).
+-- Prove dello schema: eseguire dopo mock_auth.sql e schema.sql (lo fa anche la CI, .github/workflows/test.yml).
 \set ON_ERROR_STOP 1
 create extension if not exists pgcrypto;
 -- "oggi" fisso per le finestre delle richieste (5 novembre 2026: aperte quelle di dicembre);
@@ -397,28 +397,91 @@ reset request.jwt.claim.sub;
 insert into auth.users (id, email, raw_user_meta_data) values
   ('aaaaaaaa-0000-0000-0000-000000000021', 'coord@critn.it',
    '{"first_name":"Carla","last_name":"Coord","unit_id":"22222222-2222-2222-2222-222222222222"}');
+-- ancora in attesa: nominata coordinatrice non ha diritti finché non è attiva
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
-update public.profiles set active = true, role = 'coordinatore' where email = 'coord@critn.it';
+update public.profiles set role = 'coordinatore' where email = 'coord@critn.it';
+reset role;
+reset request.jwt.claim.sub;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000021';
+do $$ begin
+  if public.is_admin() then raise exception 'ERRORE: coordinatrice non approvata già amministratrice'; end if;
+  update public.profiles set active = true where id = auth.uid();
+  raise exception 'ERRORE: coordinatrice in attesa si è attivata da sola';
+exception when insufficient_privilege then raise notice 'OK coordinatrice in attesa senza diritti';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set active = true where email = 'coord@critn.it';
 update public.profiles set is_admin = false where email = 'coord@critn.it';       -- resta amministratore
 reset role;
 reset request.jwt.claim.sub;
-select 'coordinatore', role, unit_id is null, is_admin from public.profiles where email = 'coord@critn.it'; -- t | t
+do $$ begin
+  if not (select unit_id is null and is_admin and role = 'coordinatore' from public.profiles where email = 'coord@critn.it') then
+    raise exception 'ERRORE: coordinatrice con unità o senza diritti di amministratore';
+  end if;
+  raise notice 'OK coordinatrice senza unità e amministratrice';
+end $$;
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000021';
-select 'coordinatore vede le unità', public.is_manager_of('11111111-1111-1111-1111-111111111111'); -- t
+do $$ begin
+  if not public.is_manager_of('11111111-1111-1111-1111-111111111111') then
+    raise exception 'ERRORE: la coordinatrice non gestisce le unità';
+  end if;
+  -- nemmeno un amministratore cambia il proprio ruolo o stato
+  update public.profiles set role = 'referente' where id = auth.uid();
+  raise exception 'ERRORE: amministratrice ha cambiato il proprio ruolo';
+exception when insufficient_privilege then raise notice 'OK il proprio ruolo lo cambia un altro amministratore';
+end $$;
+reset role;
+reset request.jwt.claim.sub;
+-- disattivata: perde subito ogni diritto e non può riattivarsi
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set active = false where email = 'coord@critn.it';
 reset role;
 reset request.jwt.claim.sub;
 set role authenticated;
-set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
-update public.profiles set role = 'referente', unit_id = '22222222-2222-2222-2222-222222222222' where email = 'coord@critn.it';
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000021';
+do $$ begin
+  if public.is_admin() or public.is_manager_of('11111111-1111-1111-1111-111111111111') then
+    raise exception 'ERRORE: coordinatrice disattivata ancora amministratrice';
+  end if;
+  if (select count(*) from public.unit_data) > 0 then raise exception 'ERRORE: disattivata legge i turni'; end if;
+  update public.profiles set active = true where id = auth.uid();
+  raise exception 'ERRORE: disattivata si è riattivata';
+exception when insufficient_privilege then raise notice 'OK coordinatrice disattivata senza diritti';
+end $$;
 reset role;
 reset request.jwt.claim.sub;
-select 'ex coordinatore', role, is_admin from public.profiles where email = 'coord@critn.it';     -- referente | f
+-- tolta dal ruolo: niente più amministratore
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set active = true, role = 'referente', unit_id = '22222222-2222-2222-2222-222222222222'
+  where email = 'coord@critn.it';
+reset role;
+reset request.jwt.claim.sub;
 do $$ begin
-  if not (select is_admin from public.profiles where email = 'coord@critn.it') then
-    raise notice 'OK coordinatore tolto: niente più amministratore';
-  else raise exception 'ERRORE: ex coordinatore ancora amministratore'; end if;
+  if (select is_admin from public.profiles where email = 'coord@critn.it') then
+    raise exception 'ERRORE: ex coordinatrice ancora amministratrice';
+  end if;
+  raise notice 'OK coordinatrice tolta: niente più amministratore';
+end $$;
+
+-- migrazione al 33%: cambia la versione (le schede aperte con il 25% non lo riscrivono senza conflitto)
+insert into public.units (id, name) values ('33333333-3333-3333-3333-333333333333', 'U.T. Vecchia');
+insert into public.unit_data (unit_id, data, version)
+  values ('33333333-3333-3333-3333-333333333333', '{"settings":{"maxRequestPercent":25}}', 7);
+-- si riesegue lo schema, come quando si aggiorna l'app (deve funzionare senza perdere dati)
+\ir ../schema.sql
+do $$ begin
+  if (select version from public.unit_data where unit_id = '33333333-3333-3333-3333-333333333333') <> 8 then
+    raise exception 'ERRORE: migrazione senza nuova versione';
+  end if;
+  raise notice 'OK migrazione con nuova versione';
 end $$;
 
 select 'FINE OK';

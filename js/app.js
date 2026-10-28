@@ -697,16 +697,18 @@
       (errors ? '\n\nATTENZIONE: nel mese ci sono ancora ' + errors + ' errori.' : '') +
       '\nDopo la pubblicazione i dipendenti non possono più cambiare le richieste di questo mese.')) return;
     var update = !!online.published[key];
-    online.publish(key, O.buildSnapshot(state, view.y, view.m)).then(function (row) {
+    // Mese e tabellone di adesso: se nel frattempo si cambia mese o unità, l'Excel resta quello pubblicato.
+    var y = view.y, m = view.m, pubState = state;
+    online.publish(key, O.buildSnapshot(state, y, m)).then(function (row) {
       online.published[key] = row;
       renderPublish();
       // La mail di avviso parte solo alla prima pubblicazione del mese, non con "Aggiorna pubblicazione".
       if (update) return toast('Turni di ' + title + ' aggiornati.');
       toast('Turni di ' + title + ' pubblicati: invio le mail ai dipendenti e ai coordinatori…');
       // Al coordinatore e al vice coordinatore arriva anche il tabellone in Excel.
-      return excelBase64().then(function (excel) {
+      return excelBase64(pubState, y, m).then(function (excel) {
         return online.notify({ type: 'published', month: key, excel: excel,
-          excel_name: excel ? window.ExportXlsx.fileName(view.y, view.m) : undefined });
+          excel_name: excel ? window.ExportXlsx.fileName(y, m) : undefined });
       }).then(function (r) {
         toast('Turni di ' + title + ' pubblicati. ' +
           (r.sent ? 'Mail di avviso mandate: ' + r.sent + (r.failed ? ' (' + r.failed + ' non riuscite)' : '') + '.'
@@ -717,12 +719,10 @@
     }).catch(function (e) { toast('Pubblicazione non riuscita: ' + (e.message || e), true); });
   }
 
-  // Tabellone del mese in Excel, in base64 per la mail; null se non si riesce a crearlo.
-  function excelBase64() {
-    return loadExcelJS().then(function (ExcelJS) {
-      return window.ExportXlsx.buildWorkbook(ExcelJS, R, state, view.y, view.m, { logoBase64: window.LOGO_PNG_BASE64 })
-        .xlsx.writeBuffer();
-    }).then(function (buf) {
+  // Tabellone pubblicato in Excel, in base64 per la mail ai coordinatori: tutte le settimane del mese
+  // (con vuoti i giorni degli altri mesi); null se non si riesce a crearlo.
+  function excelBase64(st, y, m) {
+    return tabelloneBuffer(st, y, m, { wholeMonth: true }).then(function (buf) {
       var bytes = new Uint8Array(buf), bin = '';
       for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
       return btoa(bin);
@@ -862,7 +862,7 @@
       return false;
     }
     // Il referente (o l'amministratore) può forzare: si avvisa soltanto.
-    if ((code === 'R' || code === 'P') && R.codeOn(state, emp, key) !== code && O.dayFull(state, key, emp)) {
+    if (online && (code === 'R' || code === 'P') && R.codeOn(state, emp, key) !== code && O.dayFull(state, key, emp)) {
       toast('Limite di richieste per quel giorno già raggiunto: inserito comunque perché lo stai forzando tu.', true);
     }
     setCell(emp, key, entry);
@@ -1256,14 +1256,18 @@
     return excelLoading;
   }
 
+  // File Excel del tabellone di un mese (ArrayBuffer).
+  function tabelloneBuffer(st, y, m, opts) {
+    return loadExcelJS().then(function (ExcelJS) {
+      return window.ExportXlsx.buildWorkbook(ExcelJS, R, st, y, m,
+        Object.assign({ logoBase64: window.LOGO_PNG_BASE64 }, opts || {})).xlsx.writeBuffer();
+    });
+  }
+
   function exportExcel() {
     if (!activeEmployees().length) return toast('Aggiungi prima i dipendenti');
     toast('Preparazione del file Excel…', true);
-    loadExcelJS().then(function (ExcelJS) {
-      var wb = window.ExportXlsx.buildWorkbook(ExcelJS, R, state, view.y, view.m,
-        { logoBase64: window.LOGO_PNG_BASE64 });
-      return wb.xlsx.writeBuffer();
-    }).then(function (buf) {
+    tabelloneBuffer(state, view.y, view.m).then(function (buf) {
       download(window.ExportXlsx.fileName(view.y, view.m), buf,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       var days = window.ExportXlsx.tabelloneDays(R, view.y, view.m);

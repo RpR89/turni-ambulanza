@@ -121,6 +121,8 @@ I dati esistenti (unità, utenti, turni) restano; vengono aggiunte le nuove tabe
 questo passaggio: finché lo schema non è aggiornato i dipendenti non riescono a inserire richieste.
 **La versione 3.7** (coordinatore e vice coordinatore referenti, limite al 33%) lo richiede di nuovo: senza, il ruolo
 di coordinatore non si può assegnare. Le unità con il vecchio limite del 25% passano da sole al 33%.
+**La versione 3.7.1** (correzioni di sicurezza: un amministratore disattivato perde i diritti, nessuno cambia il
+proprio ruolo, una sola mail per pubblicazione) lo richiede ancora.
 
 ## 8. Prima di aprire l'app a tutti
 

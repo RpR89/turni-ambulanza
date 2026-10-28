@@ -11,7 +11,7 @@ function fakeRes() {
 }
 
 // Supabase finto + invio finto delle mail.
-function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is_admin: false }, published = true, coords = [] } = {}, fn) {
+function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is_admin: false }, published = true, coords = [], notified = null } = {}, fn) {
   const calls = [], mails = [];
   const orig = global.fetch;
   process.env.SUPABASE_URL = 'https://x.supabase.co';
@@ -31,7 +31,10 @@ function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is
       return ok(url.includes('created_by=eq.me') ? [{ id: 'b1', employee_id: 'e2', day: '2026-12-10', kind: 'R', part: 'N' }] : []);
     }
     if (url.includes('/units?')) return ok([{ name: 'U.T. Trento' }]);
-    if (url.includes('/published?')) return ok(published ? [{ month: '2026-12' }] : []);
+    if (url.includes('/published?')) {
+      if (opts && opts.method === 'PATCH') return ok(null, 204);
+      return ok(published ? [{ month: '2026-12', notified_at: notified }] : []);
+    }
     if (url.includes('role=in.(coordinatore,vice_coordinatore)')) return ok(coords);
     if (url.includes('role=eq.dipendente')) {
       const all = [{ first_name: 'Luca', email: 'luca@critn.it', employee_id: 'e1' }, { first_name: 'Sara', email: 'sara@critn.it', employee_id: 'e2' }];
@@ -118,7 +121,7 @@ test('pubblicazione: anche al coordinatore e al vice, con il tabellone in Excel'
   { coords: [{ first_name: 'Carla', email: 'carla.coord@critn.it' }, { first_name: 'Anna', email: 'anna.verdi@critn.it' }] },
   async (mails) => {
     const res = fakeRes();
-    const excel = Buffer.from('finto xlsx').toString('base64');
+    const excel = Buffer.from('PK\x03\x04 finto xlsx').toString('base64');
     await handler(req({ type: 'published', unit_id: UNIT, month: '2026-12', excel, excel_name: 'Tabellone dicembre 2026' }), res);
     assert.equal(res.statusCode, 200);
     // Anna pubblica: a lei non arriva
@@ -126,6 +129,23 @@ test('pubblicazione: anche al coordinatore e al vice, con il tabellone in Excel'
     const c = mails[2];
     assert.match(c.text, /^Ciao Carla,\n\nAnna Verdi \(referente\) ha pubblicato i turni di dicembre 2026 dell'unità U\.T\. Trento/);
     assert.equal(c.attachments[0].filename, 'Tabellone dicembre 2026.xlsx');
-    assert.equal(c.attachments[0].content.toString(), 'finto xlsx');
+    assert.equal(c.attachments[0].content.toString(), 'PK\x03\x04 finto xlsx');
     assert.equal(mails[0].attachments, undefined); // ai dipendenti niente allegato
   }));
+
+test('pubblicazione: niente allegato se non è un file Excel; una sola mail per pubblicazione', () => withEnv(
+  { coords: [{ first_name: 'Carla', email: 'carla.coord@critn.it' }] }, async (mails, calls) => {
+    const res = fakeRes();
+    await handler(req({ type: 'published', unit_id: UNIT, month: '2026-12', excel: Buffer.from('<html>').toString('base64') }), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(mails[2].attachments, undefined);
+    assert.doesNotMatch(mails[2].text, /In allegato/);
+    assert.ok(calls.some(c => c.includes('/published?unit_id=eq.' + UNIT + '&month=eq.2026-12') && c.endsWith('PATCH')));
+  }));
+
+test('pubblicazione già avvisata: non rimanda le mail', () => withEnv({ notified: '2026-11-20T10:00:00Z' }, async (mails) => {
+  const res = fakeRes();
+  await handler(req({ type: 'published', unit_id: UNIT, month: '2026-12' }), res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(mails.length, 0);
+}));

@@ -83,14 +83,19 @@ async function handler(req, res) {
   }
   // Chi si registra da solo è un dipendente in attesa; chi invita l'amministratore ha il ruolo scelto
   // ed è già approvato (con la chiave di servizio il controllo sui profili non si applica).
+  // Se ruolo e attivazione non si applicano (per esempio schema.sql non aggiornato) lo si dice: altrimenti
+  // l'invitato resterebbe un dipendente in attesa che nessun referente può approvare.
   const user = await inv.json().catch(() => ({}));
-  if (user && user.id) {
-    await fetch(url + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id), {
-      method: 'PATCH',
-      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, admin),
-      body: JSON.stringify({ active: true, role: role })
-    });
-  }
+  const fail = 'Invito mandato a ' + email + ', ma il ruolo non è stato impostato: assegnalo nella tabella Utenti' +
+    ' (se il problema resta, riesegui supabase/schema.sql)';
+  if (!user || !user.id) return send(res, 502, { error: fail });
+  const patch = await fetch(url + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id), {
+    method: 'PATCH',
+    headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=representation' }, admin),
+    body: JSON.stringify({ active: true, role: role })
+  });
+  const rows = patch.ok ? await patch.json().catch(() => []) : [];
+  if (!Array.isArray(rows) || !rows.length) return send(res, 502, { error: fail });
   return send(res, 200, { ok: true });
 }
 

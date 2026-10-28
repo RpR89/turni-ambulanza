@@ -97,6 +97,9 @@ test('finestra e limite delle richieste', () => {
   assert.equal(O.requestCap(3, 25), 1);    // almeno uno
   assert.equal(O.requestCap(8, 0), Infinity);
   assert.equal(O.requestCap(16), 5);        // predefinito 33%
+  assert.equal(O.requestCap(12), 4);        // 33% = un terzo
+  assert.equal(O.requestCap(9), 3);
+  assert.equal(O.requestCap(8), 2);
   // esempio: su 16, 3 chiedono il giorno, 2 la notte, 1 tutta la giornata
   const list = [
     { day: '2026-12-10', kind: 'R', part: 'G' }, { day: '2026-12-10', kind: 'R', part: 'G' },

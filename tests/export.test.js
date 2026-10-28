@@ -56,3 +56,19 @@ test('volontari generici nel tabellone Excel: autisti prima, senza nome', () => 
   assert.deepEqual(rows[0].shifts.G, ['VOL. AUTISTA', 'ROSSI']);
   assert.deepEqual(rows[0].shifts.N, ['VOLONTARIO', 'VOLONTARIO']); // la sospesa non compare
 });
+
+test('copia pubblicata: tutte le settimane del mese, vuoti i giorni degli altri mesi', () => {
+  const days = X.tabelloneDays(R, 2026, 12, true);
+  assert.equal(days[0], '2026-11-30');               // lunedì della settimana del 1° dicembre
+  assert.equal(days[days.length - 1], '2027-01-03');
+  const state = {
+    settings: Object.assign({}, R.DEFAULT_SETTINGS),
+    employees: [{ id: 'a', name: 'Rossi Mario', role: 'autista', weeklyHours: 38 }],
+    assignments: { a: { '2026-12-01': 'G', '2027-01-02': 'N', '2026-11-30': 'F' } }, locks: {}, auto: {}
+  };
+  const rows = X.tabelloneRows(R, state, 2026, 12, true);
+  const byKey = k => rows.filter(r => r.key === k)[0];
+  assert.deepEqual(byKey('2026-12-01').shifts.G, ['ROSSI']);
+  assert.deepEqual(byKey('2027-01-02').shifts.N, []);       // gennaio non è pubblicato
+  assert.deepEqual(byKey('2026-11-30').absences.filter(Boolean), []);
+});

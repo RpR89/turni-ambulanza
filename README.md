@@ -22,8 +22,11 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     inserimento manuale di utenti con mail di invito;
   - **coordinatore referenti** e **vice coordinatore referenti** (li nomina l'amministratore, con l'invito o cambiando
     il ruolo): non appartengono a nessuna unità, sono **sempre amministratori** (vedono e possono modificare i turni di
-    tutte le unità) e ricevono la mail di **ogni pubblicazione** dei turni, con il tabellone in Excel allegato. Se
-    smettono di essere coordinatori perdono anche i diritti di amministratore;
+    tutte le unità) e ricevono la mail di **ogni pubblicazione** dei turni, con il tabellone in Excel allegato (tutte
+    le settimane del mese, vuoti i giorni degli altri mesi). Se smettono di essere coordinatori perdono anche i diritti
+    di amministratore;
+  - un amministratore (o coordinatore) **disattivato** perde subito ogni diritto; nessuno può cambiare il **proprio**
+    ruolo, stato o diritti di amministratore: lo fa un altro amministratore (così non si resta senza);
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 - **Accesso dei dipendenti** (con il back end attivo):
   - il dipendente si registra dal sito; dopo la conferma della mail resta **in attesa** finché il
@@ -46,7 +49,8 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - nei giorni con turno di giorno e di notte (es. Canal San Bovo) il riposo si può chiedere anche per **un solo
     turno**: **R<sub>G</sub>** (a casa di giorno) o **R<sub>N</sub>** (a casa la notte). Dove c'è un solo turno la
     richiesta vale per la giornata. Ogni richiesta, anche per un solo turno, conta come una delle 4 del mese;
-  - ogni turno può avere a casa su richiesta al massimo il **33% dei dipendenti** (almeno uno; es. 5 su 16): il riposo
+  - ogni turno può avere a casa su richiesta al massimo il **33% dei dipendenti**, cioè un terzo (almeno uno; es. 4 su
+    12, 5 su 16): il riposo
     per tutta la giornata e il permesso 104 contano in tutti i turni del giorno. Sotto il tabellone delle richieste le
     righe *A casa G* / *A casa N* mostrano quanti sono già a casa (in rosso i turni al completo). La percentuale si
     cambia in *Impostazioni* (0 = nessun limite). Se il dipendente prova a chiedere un riposo in un turno al completo

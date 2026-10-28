@@ -34,11 +34,12 @@
   }
 
   // Quante richieste al massimo per turno: la percentuale dei dipendenti attivi, almeno una
-  // (Infinity con percentuale 0 = nessun limite). Come request_cap nel database.
+  // (Infinity con percentuale 0 = nessun limite). Come request_cap nel database: il +0,05 fa
+  // valere il 33% come un terzo (12 dipendenti → 4).
   function requestCap(employees, percent) {
     var pct = percent == null ? 33 : +percent;
     if (!(pct > 0)) return Infinity;
-    return Math.max(1, Math.floor(employees * Math.min(pct, 100) / 100));
+    return Math.max(1, Math.floor(employees * Math.min(pct, 100) / 100 + 0.05));
   }
 
   // Richieste (di chiunque, 104 compresi) che tengono a casa qualcuno nella parte `part` del giorno.

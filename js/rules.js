@@ -59,7 +59,8 @@
     maxConsecutiveDays: 6,
     maxRestRequests: 4,
     requestDeadlineDay: 15,
-    maxRequestPercent: 25
+    maxRequestPercent: 33,
+    requestRulesV: 2
   };
 
   // Qualifiche: l'autista soccorritore ha la patente per guidare l'ambulanza.

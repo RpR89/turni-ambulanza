@@ -7,7 +7,7 @@
  *   un turno scritto a mano: in quel caso c'è un conflitto da risolvere.
  * - Il riposo può riguardare un solo turno (part G = a casa di giorno, N = a casa la notte): la casella
  *   non cambia, si tolgono solo i turni automatici di quella parte (state.reqTags 'R:G' / 'R:N').
- * - Al massimo il 25% dei dipendenti a casa per turno (la giornata intera conta in tutti i turni).
+ * - Al massimo il 33% dei dipendenti a casa per turno (la giornata intera conta in tutti i turni).
  * - La pubblicazione è una copia del mese per i dipendenti: malattia e 104 compaiono come
  *   assenza generica (A), senza il motivo.
  */
@@ -36,7 +36,7 @@
   // Quante richieste al massimo per turno: la percentuale dei dipendenti attivi, almeno una
   // (Infinity con percentuale 0 = nessun limite). Come request_cap nel database.
   function requestCap(employees, percent) {
-    var pct = percent == null ? 25 : +percent;
+    var pct = percent == null ? 33 : +percent;
     if (!(pct > 0)) return Infinity;
     return Math.max(1, Math.floor(employees * Math.min(pct, 100) / 100));
   }
@@ -44,6 +44,26 @@
   // Richieste (di chiunque, 104 compresi) che tengono a casa qualcuno nella parte `part` del giorno.
   function partLoad(list, day, part) {
     return (list || []).filter(function (r) { return r.day === day && (!r.part || r.part === part); }).length;
+  }
+
+  /*
+   * Nel tabellone del referente: il giorno ha già il massimo di persone a casa in almeno un turno?
+   * Contano i dipendenti attivi con R o 104 nella giornata e quelli a casa per un solo turno
+   * (escluso `exceptEmp`, quello che si sta modificando).
+   */
+  function dayFull(state, key, exceptEmp) {
+    var active = state.employees.filter(function (e) { return e.active !== false; });
+    var cap = requestCap(active.length, state.settings && state.settings.maxRequestPercent);
+    if (cap === Infinity) return false;
+    var parts = R.dayParts(state, key);
+    if (!parts.length) parts = ['G'];
+    return parts.some(function (part) {
+      return active.filter(function (e) {
+        if (e.id === exceptEmp) return false;
+        var code = R.codeOn(state, e.id, key);
+        return code === 'R' || code === 'P' || R.offPartOn(state, e.id, key) === part;
+      }).length >= cap;
+    });
   }
 
   // Segno della richiesta nel tabellone: 'R', 'P' o, per un solo turno, 'R:G' / 'R:N'.
@@ -236,6 +256,7 @@
     requestOpening: requestOpening,
     requestCap: requestCap,
     partLoad: partLoad,
+    dayFull: dayFull,
     requestTag: requestTag,
     buildSnapshot: buildSnapshot,
     sameSnapshot: sameSnapshot,

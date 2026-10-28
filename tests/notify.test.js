@@ -11,7 +11,7 @@ function fakeRes() {
 }
 
 // Supabase finto + invio finto delle mail.
-function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is_admin: false }, published = true } = {}, fn) {
+function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is_admin: false }, published = true, coords = [] } = {}, fn) {
   const calls = [], mails = [];
   const orig = global.fetch;
   process.env.SUPABASE_URL = 'https://x.supabase.co';
@@ -32,6 +32,7 @@ function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is
     }
     if (url.includes('/units?')) return ok([{ name: 'U.T. Trento' }]);
     if (url.includes('/published?')) return ok(published ? [{ month: '2026-12' }] : []);
+    if (url.includes('role=in.(coordinatore,vice_coordinatore)')) return ok(coords);
     if (url.includes('role=eq.dipendente')) {
       const all = [{ first_name: 'Luca', email: 'luca@critn.it', employee_id: 'e1' }, { first_name: 'Sara', email: 'sara@critn.it', employee_id: 'e2' }];
       const m = url.match(/employee_id=eq\.([^&]+)/);
@@ -111,4 +112,20 @@ test('riposo annullato: solo dipendenti attivi della stessa unità', () => withE
     await handler(req({ type: 'bumped', unit_id: UNIT }), res);
     assert.equal(res.statusCode, 403);
     assert.equal(mails.length, 0);
+  }));
+
+test('pubblicazione: anche al coordinatore e al vice, con il tabellone in Excel', () => withEnv(
+  { coords: [{ first_name: 'Carla', email: 'carla.coord@critn.it' }, { first_name: 'Anna', email: 'anna.verdi@critn.it' }] },
+  async (mails) => {
+    const res = fakeRes();
+    const excel = Buffer.from('finto xlsx').toString('base64');
+    await handler(req({ type: 'published', unit_id: UNIT, month: '2026-12', excel, excel_name: 'Tabellone dicembre 2026' }), res);
+    assert.equal(res.statusCode, 200);
+    // Anna pubblica: a lei non arriva
+    assert.deepEqual(mails.map(m => m.to), ['luca@critn.it', 'sara@critn.it', 'carla.coord@critn.it']);
+    const c = mails[2];
+    assert.match(c.text, /^Ciao Carla,\n\nAnna Verdi \(referente\) ha pubblicato i turni di dicembre 2026 dell'unità U\.T\. Trento/);
+    assert.equal(c.attachments[0].filename, 'Tabellone dicembre 2026.xlsx');
+    assert.equal(c.attachments[0].content.toString(), 'finto xlsx');
+    assert.equal(mails[0].attachments, undefined); // ai dipendenti niente allegato
   }));

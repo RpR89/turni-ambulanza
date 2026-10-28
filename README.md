@@ -20,6 +20,10 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - scheda **Amministrazione** (solo amministratori): unità di appartenenza, elenco utenti (prima quelli da approvare)
     con nome e cognome modificabili, unità, ruolo, attivo/disattivo e amministratore — **un amministratore può nominare altri amministratori** —,
     inserimento manuale di utenti con mail di invito;
+  - **coordinatore referenti** e **vice coordinatore referenti** (li nomina l'amministratore, con l'invito o cambiando
+    il ruolo): non appartengono a nessuna unità, sono **sempre amministratori** (vedono e possono modificare i turni di
+    tutte le unità) e ricevono la mail di **ogni pubblicazione** dei turni, con il tabellone in Excel allegato. Se
+    smettono di essere coordinatori perdono anche i diritti di amministratore;
   - [informativa privacy e cookie](privacy.html) e avviso informativo sui cookie (si usano solo strumenti tecnici).
 - **Accesso dei dipendenti** (con il back end attivo):
   - il dipendente si registra dal sito; dopo la conferma della mail resta **in attesa** finché il
@@ -33,7 +37,8 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - **mail di avviso**: quando il referente (o il vice) pubblica il mese, tutti i dipendenti registrati e attivi
     dell'unità ricevono una mail (solo con *Pubblica turni*: *Aggiorna pubblicazione* non manda mail). La mail parte
     dalla casella dell'app con il nome di chi pubblica come mittente, e "Rispondi" arriva a lui
-    (configurazione in [docs/SETUP-SUPABASE.md](docs/SETUP-SUPABASE.md));
+    (configurazione in [docs/SETUP-SUPABASE.md](docs/SETUP-SUPABASE.md)). La stessa mail arriva al coordinatore e al
+    vice coordinatore referenti, con il tabellone del mese in Excel allegato;
   - finché il mese non è pubblicato il dipendente vede il **tabellone delle richieste** dell'unità (tutte le
     ambulanze) con le richieste dei colleghi, e tocca i giorni della sua riga per chiedere un **riposo (R)**
     — al massimo **4 al mese** — o un **permesso 104**, se ne ha diritto, nel limite mensile dei permessi.
@@ -41,10 +46,12 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   - nei giorni con turno di giorno e di notte (es. Canal San Bovo) il riposo si può chiedere anche per **un solo
     turno**: **R<sub>G</sub>** (a casa di giorno) o **R<sub>N</sub>** (a casa la notte). Dove c'è un solo turno la
     richiesta vale per la giornata. Ogni richiesta, anche per un solo turno, conta come una delle 4 del mese;
-  - ogni turno può avere a casa su richiesta al massimo il **25% dei dipendenti** (almeno uno; es. 4 su 16): il riposo
+  - ogni turno può avere a casa su richiesta al massimo il **33% dei dipendenti** (almeno uno; es. 5 su 16): il riposo
     per tutta la giornata e il permesso 104 contano in tutti i turni del giorno. Sotto il tabellone delle richieste le
     righe *A casa G* / *A casa N* mostrano quanti sono già a casa (in rosso i turni al completo). La percentuale si
-    cambia in *Impostazioni* (0 = nessun limite);
+    cambia in *Impostazioni* (0 = nessun limite). Se il dipendente prova a chiedere un riposo in un turno al completo
+    compare **"Limite di richieste per quel giorno già raggiunto"**. Solo il referente, il vice referente e gli
+    amministratori possono **forzare** l'inserimento, scrivendo R o 104 nel tabellone: l'app lo segnala ma lo accetta;
   - il **permesso 104 ha la precedenza**: se il turno è al completo, il riposo chiesto per ultimo viene annullato; il
     collega lo vede nella sua pagina e riceve una mail (senza sapere chi ha chiesto il permesso). Se il turno è al
     completo di soli permessi 104, il 104 non entra;

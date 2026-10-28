@@ -4,7 +4,7 @@
  * - Mese pubblicato dal referente: vede il tabellone dei turni (copia pubblicata) e l'elenco dei suoi turni.
  * - Mese non pubblicato: vede solo le richieste di riposo (e 104) dell'unità e, dal 1° al giorno limite
  *   del mese prima, inserisce o toglie le proprie toccando la sua riga: per tutta la giornata o, nei giorni
- *   con giorno e notte, per un solo turno. Sotto, quanti sono già a casa per turno (massimo il 25%).
+ *   con giorno e notte, per un solo turno. Sotto, quanti sono già a casa per turno (massimo il 33%).
  * I controlli veri (limiti, termine, diritto alla 104) li fa il database: qui si mostrano soltanto.
  */
 (function () {

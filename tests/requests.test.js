@@ -96,6 +96,7 @@ test('finestra e limite delle richieste', () => {
   assert.equal(O.requestCap(8, 25), 2);
   assert.equal(O.requestCap(3, 25), 1);    // almeno uno
   assert.equal(O.requestCap(8, 0), Infinity);
+  assert.equal(O.requestCap(16), 5);        // predefinito 33%
   // esempio: su 16, 3 chiedono il giorno, 2 la notte, 1 tutta la giornata
   const list = [
     { day: '2026-12-10', kind: 'R', part: 'G' }, { day: '2026-12-10', kind: 'R', part: 'G' },
@@ -144,4 +145,15 @@ test('la proposta automatica rispetta il riposo per un solo turno', () => {
   const res = R.generateMonth(s, 2026, 12);
   const got = R.shiftIdsOf(s, (res.assignments.a || {})['2026-12-03']);
   assert.ok(got.indexOf('N') < 0);
+});
+
+test('tabellone del referente: giorno al completo', () => {
+  const s = makeState({ a: { '2026-12-03': 'R' } });
+  s.employees.push({ id: 'c', name: 'Terzo', role: 'soccorritore', weeklyHours: 38 });
+  assert.equal(R.DEFAULT_SETTINGS.maxRequestPercent, 33);
+  assert.equal(O.dayFull(s, '2026-12-03', 'b'), true);   // 3 dipendenti → 1 a casa per turno
+  assert.equal(O.dayFull(s, '2026-12-03', 'a'), false);  // si sta cambiando proprio la sua casella
+  assert.equal(O.dayFull(s, '2026-12-04', 'b'), false);
+  s.reqTags = { c: { '2026-12-04': 'R:N' } };
+  assert.equal(O.dayFull(s, '2026-12-04', 'b'), true);   // la notte è piena
 });

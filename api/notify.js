@@ -1,7 +1,8 @@
 /*
  * Funzione Vercel: avvisi via mail ai dipendenti.
  *   - type "published": i turni del mese sono stati pubblicati → a tutti i dipendenti
- *     attivi dell'unità;
+ *     attivi dell'unità e al coordinatore e vice coordinatore referenti (a loro con il tabellone Excel
+ *     in allegato, se la pagina lo manda: campo excel in base64);
  *   - type "rejected": richieste di riposo / 104 non accolte, con la motivazione → al dipendente;
  *   - type "bumped": riposi annullati dal permesso 104 appena inserito da chi chiama (giornata al
  *     completo) → ai dipendenti che li avevano chiesti, senza dire chi ha preso il permesso.
@@ -23,7 +24,9 @@ const MONTH = /^\d{4}-\d{2}$/;
 const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto',
   'settembre', 'ottobre', 'novembre', 'dicembre'];
 const WEEKDAYS = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
-const ROLE_TEXT = { referente: 'referente', vice_referente: 'vice referente' };
+const ROLE_TEXT = { referente: 'referente', vice_referente: 'vice referente',
+  coordinatore: 'coordinatore referenti', vice_coordinatore: 'vice coordinatore referenti' };
+const MAX_EXCEL = 3 * 1024 * 1024;
 const PART_TEXT = { G: ' (solo il turno di giorno)', N: ' (solo il turno di notte)' };
 const FOOTER = '\n\n— Turni Ambulanza · Croce Rossa Italiana, Comitato di Trento\n' +
   'Mail automatica: la ricevi perché sei registrato all\'app dei turni della tua unità.';
@@ -121,6 +124,27 @@ async function handler(req, res) {
         (unitName ? ' dell\'unità ' + unitName : '') + '.\n' +
         (site ? 'Puoi vederli qui: ' + site + '\n' : '') + replyNote + FOOTER
     }));
+    // Coordinatore e vice coordinatore referenti: ricevono ogni pubblicazione, con il tabellone in Excel.
+    const excel = typeof body.excel === 'string' && body.excel.length <= MAX_EXCEL * 4 / 3 + 4
+      ? Buffer.from(body.excel, 'base64') : null;
+    const excelName = (oneLine(body.excel_name, 120).replace(/[\\/:*?"<>|]+/g, '') || 'Tabellone turni.xlsx')
+      .replace(/(\.xlsx)?$/i, '.xlsx');
+    const coords = await rest('profiles?select=first_name,email&active=eq.true&role=in.(coordinatore,vice_coordinatore)');
+    const seen = {};
+    staff.forEach(p => { seen[p.email] = true; });
+    coords.filter(p => p.email !== prof.email && !seen[p.email]).forEach(p => {
+      seen[p.email] = true;
+      messages.push(Object.assign({
+        to: p.email,
+        subject: 'Turni di ' + title + ' pubblicati' + (unitName ? ' – ' + unitName : ''),
+        text: 'Ciao ' + oneLine(p.first_name, 80) + ',\n\n' +
+          sender + ' (' + (ROLE_TEXT[prof.role] || 'referente') + ') ha pubblicato i turni di ' + title +
+          (unitName ? ' dell\'unità ' + unitName : '') + '.\n' +
+          (excel && excel.length ? 'In allegato il tabellone in Excel.\n' : '') +
+          (site ? 'Puoi vederli anche qui: ' + site + '\n' : '') + replyNote + FOOTER
+      }, excel && excel.length ? { attachments: [{ filename: excelName, content: excel,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }] } : {}));
+    });
   } else if (body.type === 'rejected') {
     const emp = String(body.employee_id || '');
     const days = Array.isArray(body.days) ? body.days.map(String).filter(d => DAY.test(d)).slice(0, 31).sort() : [];

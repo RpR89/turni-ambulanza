@@ -10,7 +10,8 @@
 'use strict';
 
 const ALLOWED_DOMAIN = '@critn.it';
-const ROLES = ['referente', 'vice_referente'];
+const COORDINATORS = ['coordinatore', 'vice_coordinatore'];
+const ROLES = ['referente', 'vice_referente'].concat(COORDINATORS);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function send(res, status, body) {
@@ -60,14 +61,16 @@ async function handler(req, res) {
     return send(res, 400, { error: 'Serve un indirizzo ' + ALLOWED_DOMAIN });
   }
   if (!first || !last) return send(res, 400, { error: 'Nome e cognome sono obbligatori' });
-  if (!UUID.test(unit)) return send(res, 400, { error: 'Scegli l\'unità di appartenenza' });
   if (ROLES.indexOf(role) < 0) return send(res, 400, { error: 'Ruolo non valido' });
+  // coordinatore e vice coordinatore referenti non appartengono a nessuna unità
+  const coordinator = COORDINATORS.indexOf(role) >= 0;
+  if (!coordinator && !UUID.test(unit)) return send(res, 400, { error: 'Scegli l\'unità di appartenenza' });
 
   const redirect = process.env.SITE_URL ? '?redirect_to=' + encodeURIComponent(process.env.SITE_URL) : '';
   const inv = await fetch(url + '/auth/v1/invite' + redirect, {
     method: 'POST',
     headers: Object.assign({ 'Content-Type': 'application/json' }, admin),
-    body: JSON.stringify({ email: email, data: { first_name: first, last_name: last, unit_id: unit, role: role } })
+    body: JSON.stringify({ email: email, data: { first_name: first, last_name: last, unit_id: coordinator ? '' : unit, role: role } })
   });
   if (!inv.ok) {
     let msg = 'Invito non riuscito';

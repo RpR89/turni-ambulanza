@@ -19,8 +19,10 @@
 --   - referenti e vice referenti vedono e modificano solo i turni della propria unità
 --   - i dipendenti, dopo l'approvazione del referente, vedono solo i turni pubblicati
 --     e le richieste; inseriscono le proprie richieste dal 1° al giorno limite del mese prima
---     (al massimo il 25% dei dipendenti a casa per turno; il permesso 104 ha la precedenza)
+--     (al massimo il 33% dei dipendenti a casa per turno; il permesso 104 ha la precedenza)
 --   - l'amministratore gestisce unità e utenti e vede tutte le unità
+--   - il coordinatore referenti e il vice coordinatore non appartengono a nessuna unità e sono sempre
+--     amministratori; ricevono la mail di ogni pubblicazione dei turni
 -- =====================================================================
 
 create extension if not exists pgcrypto;
@@ -52,7 +54,7 @@ alter table public.profiles add column if not exists approved_at timestamptz;
 update public.profiles set approved_at = created_at where approved_at is null and active;
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check
-  check (role in ('referente', 'vice_referente', 'dipendente'));
+  check (role in ('referente', 'vice_referente', 'dipendente', 'coordinatore', 'vice_coordinatore'));
 
 create table if not exists public.unit_data (
   unit_id uuid primary key references public.units (id) on delete cascade,
@@ -164,6 +166,15 @@ begin
       raise exception 'Solo l''amministratore può modificare unità, ruolo e stato'
         using errcode = 'insufficient_privilege';
     end if;
+  end if;
+  -- Coordinatore e vice coordinatore referenti: nessuna unità e sempre amministratori. Chi smette di
+  -- esserlo perde anche i diritti di amministratore (se non vengono cambiati nello stesso momento).
+  if new.role in ('coordinatore', 'vice_coordinatore') then
+    new.unit_id := null;
+    new.is_admin := true;
+    new.employee_id := null;
+  elsif old.role in ('coordinatore', 'vice_coordinatore') and new.is_admin = old.is_admin then
+    new.is_admin := false;
   end if;
   -- La prima attivazione segna l'approvazione (così si distingue chi è in attesa da chi è disattivato).
   if new.active and new.approved_at is null then
@@ -357,6 +368,13 @@ create policy published_write on public.published for all to authenticated
 revoke all on public.published from anon;
 grant select, insert, update, delete on public.published to authenticated;
 
+-- Dalla 3.7 il limite predefinito è il 33%: le unità con il vecchio 25% predefinito passano al 33%
+-- (requestRulesV segna i tabelloni già aggiornati, così una scelta fatta dopo resta).
+update public.unit_data
+  set data = jsonb_set(jsonb_set(data, '{settings,maxRequestPercent}', '33'), '{settings,requestRulesV}', '2')
+  where jsonb_typeof(data -> 'settings') = 'object' and data -> 'settings' ->> 'maxRequestPercent' = '25'
+    and not (data -> 'settings' ? 'requestRulesV');
+
 -- Oggi (ora italiana): le finestre delle richieste si contano da qui.
 create or replace function public.request_today()
 returns date language sql stable as $$
@@ -396,14 +414,14 @@ returns text[] language sql stable security definer set search_path = public as 
   from sh
 $$;
 
--- Quante richieste al massimo per turno in un giorno: la percentuale (25%) dei dipendenti attivi,
+-- Quante richieste al massimo per turno in un giorno: la percentuale (33%) dei dipendenti attivi,
 -- almeno una. Null = nessun limite (percentuale 0).
 create or replace function public.request_cap(p_unit uuid)
 returns integer language sql stable security definer set search_path = public as $$
-  select case when public.unit_setting(p_unit, 'maxRequestPercent', 25) <= 0 then null
+  select case when public.unit_setting(p_unit, 'maxRequestPercent', 33) <= 0 then null
     else greatest(1, floor((select count(*) from public.unit_data d, jsonb_array_elements(d.data -> 'employees') e
       where d.unit_id = p_unit and coalesce((e ->> 'active')::boolean, true))
-      * least(public.unit_setting(p_unit, 'maxRequestPercent', 25), 100) / 100.0)::integer) end
+      * least(public.unit_setting(p_unit, 'maxRequestPercent', 33), 100) / 100.0)::integer) end
 $$;
 
 -- Richieste dell'unità in un periodo, per i dipendenti: i permessi 104 dei colleghi compaiono
@@ -428,7 +446,7 @@ grant execute on function public.unit_requests(uuid, date, date) to authenticate
 -- chiede il riposo per un solo turno (solo nei giorni con turni di giorno e di notte, altrimenti vale
 -- per la giornata).
 -- Controlli: finestra (dal 1° al giorno limite del mese prima), mese non ancora pubblicato, massimo
--- riposi al mese, 104 solo se ne ha diritto e nel limite mensile, massimo il 25% dei dipendenti a casa
+-- riposi al mese, 104 solo se ne ha diritto e nel limite mensile, massimo il 33% dei dipendenti a casa
 -- per ogni turno. Il permesso 104 ha la precedenza: se il turno è al completo annulla il riposo chiesto
 -- per ultimo (che finisce in request_bumps); se è al completo di soli 104 non entra.
 -- Restituisce { bumped: quanti riposi ha annullato }.
@@ -451,7 +469,7 @@ declare
   cap integer;
   victim public.requests;
   bumped integer := 0;
-  part_text jsonb := '{"G": " per il turno di giorno", "N": " per il turno di notte"}';
+  part_text jsonb := '{"G": "turno di giorno", "N": "turno di notte"}';
 begin
   select * into me from public.profiles where id = auth.uid();
   if me.id is null or not me.active or me.role <> 'dipendente' or me.unit_id is null
@@ -482,7 +500,7 @@ begin
     raise exception 'I turni di questo mese sono già pubblicati: per cambiare chiedi al referente'
       using errcode = 'check_violation';
   end if;
-  -- un'unità alla volta: i conteggi del 25% non si accavallano
+  -- un'unità alla volta: i conteggi del limite non si accavallano
   perform pg_advisory_xact_lock(hashtext('richieste|' || me.unit_id::text));
   if p_kind is null then
     delete from public.requests where unit_id = me.unit_id and employee_id = me.employee_id and day = p_day;
@@ -520,18 +538,16 @@ begin
           where unit_id = me.unit_id and day = p_day and employee_id <> me.employee_id and (part is null or part = b);
         exit when n < cap;
         if p_kind = 'R' then
-          raise exception 'Il giorno % è al completo%: ci sono già % richieste (massimo % per turno, il % del personale)',
-            to_char(p_day, 'DD/MM'), case when cardinality(parts) > 1 then part_text ->> b else '' end, n, cap,
-            public.unit_setting(me.unit_id, 'maxRequestPercent', 25)::text || '%' using errcode = 'check_violation';
+          raise exception 'Limite di richieste per quel giorno già raggiunto%',
+            case when cardinality(parts) > 1 and p_part is not null then ' (' || (part_text ->> b) || ')' else '' end
+            using errcode = 'check_violation';
         end if;
         select * into victim from public.requests
           where unit_id = me.unit_id and day = p_day and employee_id <> me.employee_id and kind <> 'P'
             and (part is null or part = b)
           order by created_at desc, id desc limit 1;
         if victim.id is null then
-          raise exception 'Il giorno % ci sono già % permessi 104: è il massimo (% per turno, il % del personale)',
-            to_char(p_day, 'DD/MM'), n, cap, public.unit_setting(me.unit_id, 'maxRequestPercent', 25)::text || '%'
-            using errcode = 'check_violation';
+          raise exception 'Limite di richieste per quel giorno già raggiunto' using errcode = 'check_violation';
         end if;
         delete from public.requests where id = victim.id;
         insert into public.request_bumps (unit_id, employee_id, day, kind, part, created_by)
@@ -566,7 +582,7 @@ returns jsonb language sql stable security definer set search_path = public as $
     'maxRestRequests', public.unit_setting(p_unit, 'maxRestRequests', 4),
     'requestDeadlineDay', public.unit_setting(p_unit, 'requestDeadlineDay', 15),
     'perm104PerMonth', public.unit_setting(p_unit, 'perm104PerMonth', 3),
-    'maxRequestPercent', public.unit_setting(p_unit, 'maxRequestPercent', 25),
+    'maxRequestPercent', public.unit_setting(p_unit, 'maxRequestPercent', 33),
     'requestCap', public.request_cap(p_unit),
     'ambulances', (select case when jsonb_typeof(d.data -> 'settings' -> 'ambulances') = 'array'
       then d.data -> 'settings' -> 'ambulances' else '[]'::jsonb end

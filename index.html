@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Turni">
-  <link rel="stylesheet" href="css/style.css?v=3.6.0">
+  <link rel="stylesheet" href="css/style.css?v=3.7.0">
 </head>
 <body>
   <header class="topbar no-print">
@@ -251,7 +251,8 @@
           <label class="field">Email <input name="email" type="email" placeholder="nome.cognome@critn.it" required></label>
           <label class="field">Unità <select name="unit" required></select></label>
           <label class="field">Ruolo
-            <select name="role"><option value="referente">Referente</option><option value="vice_referente">Vice referente</option></select>
+            <select name="role"><option value="referente">Referente</option><option value="vice_referente">Vice referente</option>
+              <option value="coordinatore">Coordinatore referenti</option><option value="vice_coordinatore">Vice coordinatore referenti</option></select>
           </label>
           <button class="primary">Invia invito</button>
         </form>
@@ -260,6 +261,8 @@
         <h3>Utenti</h3>
         <p class="note">Le modifiche si salvano subito: puoi correggere anche nome e cognome. Chi si registra da solo resta in attesa: i referenti e i vice li
           approvi tu con <b>Approva</b>, i dipendenti li approva il referente della loro unità (scheda Dipendenti).
+          Il <b>coordinatore referenti</b> e il <b>vice coordinatore</b> non appartengono a nessuna unità, sono sempre
+          amministratori e ricevono la mail di ogni pubblicazione dei turni.
           Chi si registra è sempre un dipendente: per farlo diventare referente o vice cambia il suo ruolo qui
           (e approvalo), oppure invitalo con "Aggiungi un utente". Togliendo "Attivo" l'utente non può più entrare. Con la casella "Amministratore" nomini altri amministratori
           (o togli i diritti); non puoi toglierli a te stesso.</p>
@@ -346,7 +349,7 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.6.0 (richieste per turno e limite del 25%)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.7.0 (coordinatori referenti e limite del 33%)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="vol-pop" class="vol-pop no-print" role="dialog" aria-label="Volontari nel turno" hidden></div>
@@ -377,15 +380,15 @@
     </form>
   </dialog>
 
-  <script src="js/config.js?v=3.6.0"></script>
-  <script src="js/vendor/supabase.min.js?v=3.6.0"></script>
-  <script src="js/rules.js?v=3.6.0"></script>
-  <script src="js/requests.js?v=3.6.0"></script>
-  <script src="js/ics.js?v=3.6.0"></script>
-  <script src="js/logo.js?v=3.6.0"></script>
-  <script src="js/export-xlsx.js?v=3.6.0"></script>
-  <script src="js/staff.js?v=3.6.0"></script>
-  <script src="js/auth.js?v=3.6.0"></script>
-  <script src="js/app.js?v=3.6.0"></script>
+  <script src="js/config.js?v=3.7.0"></script>
+  <script src="js/vendor/supabase.min.js?v=3.7.0"></script>
+  <script src="js/rules.js?v=3.7.0"></script>
+  <script src="js/requests.js?v=3.7.0"></script>
+  <script src="js/ics.js?v=3.7.0"></script>
+  <script src="js/logo.js?v=3.7.0"></script>
+  <script src="js/export-xlsx.js?v=3.7.0"></script>
+  <script src="js/staff.js?v=3.7.0"></script>
+  <script src="js/auth.js?v=3.7.0"></script>
+  <script src="js/app.js?v=3.7.0"></script>
 </body>
 </html>

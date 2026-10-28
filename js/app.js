@@ -37,6 +37,10 @@
     var base = emptyState();
     if (!s || typeof s !== 'object' || !Array.isArray(s.employees)) throw new Error('Formato non valido');
     base.settings = Object.assign(base.settings, s.settings || {});
+    // Fino alla 3.6 il limite predefinito delle richieste era il 25%: ora è il 33%.
+    if (s.settings && !s.settings.requestRulesV && +s.settings.maxRequestPercent === 25) {
+      base.settings.maxRequestPercent = R.DEFAULT_SETTINGS.maxRequestPercent;
+    }
     // Versioni precedenti: persone per turno separate per G e N.
     if (s.settings && s.settings.crewSize == null && s.settings.staffPerShift) {
       base.settings.crewSize = +s.settings.staffPerShift.G || R.DEFAULT_SETTINGS.crewSize;
@@ -688,7 +692,8 @@
     var errors = R.validateMonth(state, view.y, view.m).filter(function (i) { return i.level === 'error'; }).length;
     if (!confirm((online.published[key] ? 'Aggiornare i turni pubblicati di ' : 'Pubblicare i turni di ') + title + '?\n' +
       'Tutti i dipendenti dell\'unità li vedranno così come sono adesso (malattia e 104 compaiono come "assente")' +
-      (online.published[key] ? '.' : ' e riceveranno una mail di avviso.') +
+      (online.published[key] ? '.' : ' e riceveranno una mail di avviso; la ricevono anche il coordinatore e il vice ' +
+        'coordinatore referenti, con il tabellone in Excel.') +
       (errors ? '\n\nATTENZIONE: nel mese ci sono ancora ' + errors + ' errori.' : '') +
       '\nDopo la pubblicazione i dipendenti non possono più cambiare le richieste di questo mese.')) return;
     var update = !!online.published[key];
@@ -697,15 +702,31 @@
       renderPublish();
       // La mail di avviso parte solo alla prima pubblicazione del mese, non con "Aggiorna pubblicazione".
       if (update) return toast('Turni di ' + title + ' aggiornati.');
-      toast('Turni di ' + title + ' pubblicati: invio le mail ai dipendenti…');
-      return online.notify({ type: 'published', month: key }).then(function (r) {
+      toast('Turni di ' + title + ' pubblicati: invio le mail ai dipendenti e ai coordinatori…');
+      // Al coordinatore e al vice coordinatore arriva anche il tabellone in Excel.
+      return excelBase64().then(function (excel) {
+        return online.notify({ type: 'published', month: key, excel: excel,
+          excel_name: excel ? window.ExportXlsx.fileName(view.y, view.m) : undefined });
+      }).then(function (r) {
         toast('Turni di ' + title + ' pubblicati. ' +
-          (r.sent ? 'Mail di avviso mandata a ' + r.sent + (r.sent === 1 ? ' dipendente' : ' dipendenti') +
-            (r.failed ? ' (' + r.failed + ' non riuscite)' : '') + '.' : 'Nessun dipendente registrato da avvisare.'), !!r.failed);
+          (r.sent ? 'Mail di avviso mandate: ' + r.sent + (r.failed ? ' (' + r.failed + ' non riuscite)' : '') + '.'
+            : 'Nessun dipendente o coordinatore registrato da avvisare.'), !!r.failed);
       }, function (e) {
         toast('Turni di ' + title + ' pubblicati, ma le mail non sono partite: ' + (e.message || e), true);
       });
     }).catch(function (e) { toast('Pubblicazione non riuscita: ' + (e.message || e), true); });
+  }
+
+  // Tabellone del mese in Excel, in base64 per la mail; null se non si riesce a crearlo.
+  function excelBase64() {
+    return loadExcelJS().then(function (ExcelJS) {
+      return window.ExportXlsx.buildWorkbook(ExcelJS, R, state, view.y, view.m, { logoBase64: window.LOGO_PNG_BASE64 })
+        .xlsx.writeBuffer();
+    }).then(function (buf) {
+      var bytes = new Uint8Array(buf), bin = '';
+      for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return btoa(bin);
+    }).catch(function () { return null; });
   }
 
   function unpublishMonth() {
@@ -839,6 +860,10 @@
     if (code === 'P' && !(empById(emp) || {}).has104) {
       toast((empById(emp) || {}).name + ' non ha diritto alla 104: attivala nella scheda Dipendenti.', true);
       return false;
+    }
+    // Il referente (o l'amministratore) può forzare: si avvisa soltanto.
+    if ((code === 'R' || code === 'P') && R.codeOn(state, emp, key) !== code && O.dayFull(state, key, emp)) {
+      toast('Limite di richieste per quel giorno già raggiunto: inserito comunque perché lo stai forzando tu.', true);
     }
     setCell(emp, key, entry);
     return true;

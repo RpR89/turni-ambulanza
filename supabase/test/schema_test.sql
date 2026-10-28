@@ -334,8 +334,10 @@ begin
   perform set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000014', false);
   begin
     perform public.set_request('2026-12-10', 'R', 'N');
-    raise exception 'ERRORE: superato il 25%% di notte';
-  exception when check_violation then raise notice 'OK notte al completo: %', sqlerrm;
+    raise exception 'ERRORE: superato il limite di notte';
+  exception when check_violation then
+    if sqlerrm not like 'Limite di richieste per quel giorno già raggiunto%' then raise; end if;
+    raise notice 'OK notte al completo: %', sqlerrm;
   end;
   begin
     perform public.set_request('2026-12-10', 'R');
@@ -390,5 +392,33 @@ exception when insufficient_privilege then raise notice 'OK annullamenti protett
 end $$;
 reset role;
 reset request.jwt.claim.sub;
+
+-- ===== coordinatore e vice coordinatore referenti: senza unità e sempre amministratori =====
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('aaaaaaaa-0000-0000-0000-000000000021', 'coord@critn.it',
+   '{"first_name":"Carla","last_name":"Coord","unit_id":"22222222-2222-2222-2222-222222222222"}');
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set active = true, role = 'coordinatore' where email = 'coord@critn.it';
+update public.profiles set is_admin = false where email = 'coord@critn.it';       -- resta amministratore
+reset role;
+reset request.jwt.claim.sub;
+select 'coordinatore', role, unit_id is null, is_admin from public.profiles where email = 'coord@critn.it'; -- t | t
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000021';
+select 'coordinatore vede le unità', public.is_manager_of('11111111-1111-1111-1111-111111111111'); -- t
+reset role;
+reset request.jwt.claim.sub;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000003';
+update public.profiles set role = 'referente', unit_id = '22222222-2222-2222-2222-222222222222' where email = 'coord@critn.it';
+reset role;
+reset request.jwt.claim.sub;
+select 'ex coordinatore', role, is_admin from public.profiles where email = 'coord@critn.it';     -- referente | f
+do $$ begin
+  if not (select is_admin from public.profiles where email = 'coord@critn.it') then
+    raise notice 'OK coordinatore tolto: niente più amministratore';
+  else raise exception 'ERRORE: ex coordinatore ancora amministratore'; end if;
+end $$;
 
 select 'FINE OK';

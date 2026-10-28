@@ -12,7 +12,10 @@
   window.TurniAuthRequired = configured;
 
   var DOMAIN = '@' + String(CFG.allowedDomain || 'critn.it').toLowerCase();
-  var ROLES = { referente: 'Referente', vice_referente: 'Vice referente', dipendente: 'Dipendente' };
+  var ROLES = { referente: 'Referente', vice_referente: 'Vice referente', dipendente: 'Dipendente',
+    coordinatore: 'Coordinatore referenti', vice_coordinatore: 'Vice coordinatore referenti' };
+  // Coordinatore e vice coordinatore referenti: nessuna unità, sempre amministratori (lo impone il database).
+  function isCoordinator(role) { return role === 'coordinatore' || role === 'vice_coordinatore'; }
   var COOKIE_KEY = 'turni-ambulanza:avviso-cookie';
 
   function $(sel) { return document.querySelector(sel); }
@@ -530,7 +533,7 @@
       }).join('') + '</select>'
       : '<b>' + esc(unitName(ctx.unitId)) + '</b>';
     bar.innerHTML = '<span class="who">' + esc(p.first_name + ' ' + p.last_name) + ' · ' +
-      (p.is_admin ? 'Amministratore' : esc(ROLES[p.role] || p.role)) + '</span> ' + unitPart +
+      (isCoordinator(p.role) ? esc(ROLES[p.role]) : p.is_admin ? 'Amministratore' : esc(ROLES[p.role] || p.role)) + '</span> ' + unitPart +
       ' <span id="save-status" class="save-status"></span>' +
       ' <button type="button" id="logout" class="ghost">Esci</button>';
     $('#logout').addEventListener('click', logout);
@@ -597,7 +600,8 @@
             '<td><input data-f="last_name" value="' + esc(u.last_name) + '" maxlength="80" aria-label="Cognome"></td>' +
             '<td><input data-f="first_name" value="' + esc(u.first_name) + '" maxlength="80" aria-label="Nome"></td>' +
             '<td>' + esc(u.email) + '</td>' +
-            '<td><select data-f="unit_id">' + unitOpts + '</select></td>' +
+            '<td><select data-f="unit_id"' + (isCoordinator(u.role) ? ' disabled title="Il coordinatore non appartiene a nessuna unità"' : '') +
+            '>' + unitOpts + '</select></td>' +
             '<td><select data-f="role">' + Object.keys(ROLES).map(function (k) {
               return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + ROLES[k] + '</option>';
             }).join('') + '</select></td>' +
@@ -606,8 +610,10 @@
                 ? '<span class="badge soft" title="Lo approva il referente della sua unità, scegliendo la sua riga del tabellone">attende il referente</span>'
                 : '<button type="button" class="primary" data-act="approve-user">Approva</button>')
               : '<input type="checkbox" data-f="active"' + (u.active ? ' checked' : '') + (u.id === me ? ' disabled' : '') + '>') + '</td>' +
-            '<td><input type="checkbox" data-f="is_admin" title="Gli amministratori gestiscono unità e utenti e vedono i turni di tutte le unità"' +
-            (u.is_admin ? ' checked' : '') + (u.id === me ? ' disabled' : '') + '></td></tr>';
+            '<td><input type="checkbox" data-f="is_admin" title="' + (isCoordinator(u.role)
+              ? 'Il coordinatore e il vice coordinatore sono sempre amministratori'
+              : 'Gli amministratori gestiscono unità e utenti e vedono i turni di tutte le unità') + '"' +
+            (u.is_admin ? ' checked' : '') + (u.id === me || isCoordinator(u.role) ? ' disabled' : '') + '></td></tr>';
         }).join('') + '</tbody>';
     });
   }
@@ -662,7 +668,8 @@
       if (!b) return;
       var tr = b.closest('[data-user]');
       var unit = tr.querySelector('[data-f="unit_id"]').value;
-      if (!unit) return toast('Scegli prima l\'unità di questo utente.', true);
+      var role = tr.querySelector('[data-f="role"]').value;
+      if (!unit && !isCoordinator(role)) return toast('Scegli prima l\'unità di questo utente.', true);
       b.disabled = true;
       sb.from('profiles').update({ active: true }).eq('id', tr.getAttribute('data-user')).then(function (r) {
         if (r.error) { b.disabled = false; return toast(translateError(r.error), true); }
@@ -681,6 +688,10 @@
         if (!v) { toast('Il ' + (f === 'first_name' ? 'nome' : 'cognome') + ' non può essere vuoto.', true); return loadUsers(); }
         ev.target.value = v;
       }
+      if (f === 'role' && isCoordinator(ev.target.value) && !confirm('Nominare ' + name + ' ' + ROLES[ev.target.value].toLowerCase() +
+        '?\nNon apparterrà più a nessuna unità e diventerà amministratore: potrà gestire unità e utenti e vedere i turni di tutte le unità.')) {
+        return loadUsers();
+      }
       if (f === 'is_admin' && !confirm(ev.target.checked
         ? 'Nominare ' + name + ' amministratore?\nPotrà gestire unità e utenti (anche nominare o togliere altri amministratori) e vedere i turni di tutte le unità.'
         : 'Togliere a ' + name + ' i diritti di amministratore?')) {
@@ -694,6 +705,10 @@
         if (r.error) { toast(translateError(r.error), true); return loadUsers(); }
         toast('Utente aggiornato.');
         if (f === 'role' || f === 'first_name' || f === 'last_name') loadUsers();
+        if (f === 'role' && tr.getAttribute('data-user') === ctx.profile.id) {
+          ctx.profile.role = patch.role;
+          renderUserBar();
+        }
         if ((f === 'first_name' || f === 'last_name') && tr.getAttribute('data-user') === ctx.profile.id) {
           ctx.profile[f] = patch[f];
           renderUserBar();
@@ -701,19 +716,25 @@
       });
     });
 
+    // coordinatore e vice coordinatore: niente unità
+    var invite = $('#invite-form');
+    function inviteUnit() { invite.unit.disabled = isCoordinator(invite.role.value); }
+    invite.role.addEventListener('change', inviteUnit);
+    invite.addEventListener('reset', function () { setTimeout(inviteUnit, 0); });
+
     $('#invite-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
       var f = ev.target;
       var email = f.email.value.trim().toLowerCase();
       if (!validEmail(email)) return toast('Serve un indirizzo ' + DOMAIN + '.', true);
-      if (!f.unit.value) return toast('Scegli l\'unità.', true);
+      if (!f.unit.value && !isCoordinator(f.role.value)) return toast('Scegli l\'unità.', true);
       busy(f, true);
       sb.auth.getSession().then(function (s) {
         return fetch('/api/admin-invite', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (s.data.session && s.data.session.access_token) },
           body: JSON.stringify({ email: email, first_name: f.first_name.value, last_name: f.last_name.value,
-            unit_id: f.unit.value, role: f.role.value })
+            unit_id: isCoordinator(f.role.value) ? '' : f.unit.value, role: f.role.value })
         });
       }).then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (j) { return { ok: res.ok, body: j }; });

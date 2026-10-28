@@ -117,6 +117,9 @@ Quando una nuova versione dell'app lo richiede (per esempio la 3.0, con l'access
 **SQL Editor → New query**, incolla di nuovo tutto [`supabase/schema.sql`](../supabase/schema.sql) e premi **Run**.
 I dati esistenti (unità, utenti, turni) restano; vengono aggiunte le nuove tabelle e aggiornate le regole.
 
+**La versione 3.6** (richieste per un solo turno, limite del 25% per turno, precedenza dei permessi 104) richiede
+questo passaggio: finché lo schema non è aggiornato i dipendenti non riescono a inserire richieste.
+
 ## 8. Prima di aprire l'app a tutti
 
 - Completa e fai verificare dal DPO l'[informativa privacy](../privacy.html) (parti evidenziate in giallo).

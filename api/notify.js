@@ -2,8 +2,11 @@
  * Funzione Vercel: avvisi via mail ai dipendenti.
  *   - type "published": i turni del mese sono stati pubblicati → a tutti i dipendenti
  *     attivi dell'unità;
- *   - type "rejected": richieste di riposo / 104 non accolte, con la motivazione → al dipendente.
- * La può chiamare solo un referente o vice referente attivo dell'unità (o un amministratore).
+ *   - type "rejected": richieste di riposo / 104 non accolte, con la motivazione → al dipendente;
+ *   - type "bumped": riposi annullati dal permesso 104 appena inserito da chi chiama (giornata al
+ *     completo) → ai dipendenti che li avevano chiesti, senza dire chi ha preso il permesso.
+ * "published" e "rejected" li può chiamare solo un referente o vice referente attivo dell'unità (o un
+ * amministratore); "bumped" un dipendente attivo dell'unità, solo per gli annullamenti causati da lui.
  *
  * Le mail partono dalla casella dell'app (MAIL_FROM) con il nome di chi pubblica o rifiuta come mittente;
  * "Rispondi" arriva a lui (Reply-To).
@@ -21,6 +24,7 @@ const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'l
   'settembre', 'ottobre', 'novembre', 'dicembre'];
 const WEEKDAYS = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
 const ROLE_TEXT = { referente: 'referente', vice_referente: 'vice referente' };
+const PART_TEXT = { G: ' (solo il turno di giorno)', N: ' (solo il turno di notte)' };
 const FOOTER = '\n\n— Turni Ambulanza · Croce Rossa Italiana, Comitato di Trento\n' +
   'Mail automatica: la ricevi perché sei registrato all\'app dei turni della tua unità.';
 
@@ -87,6 +91,7 @@ async function handler(req, res) {
 
   const prof = (await rest('profiles?select=first_name,last_name,email,role,unit_id,active,is_admin&id=eq.' +
     encodeURIComponent(caller.id)))[0];
+  if (body.type === 'bumped') return bumped(res, rest, url, admin, unit, caller, prof);
   const manager = prof && prof.active && (prof.is_admin ||
     (prof.unit_id === unit && (prof.role === 'referente' || prof.role === 'vice_referente')));
   if (!manager) return send(res, 403, { error: 'Solo il referente o il vice referente dell\'unità può mandare avvisi' });
@@ -119,6 +124,7 @@ async function handler(req, res) {
   } else if (body.type === 'rejected') {
     const emp = String(body.employee_id || '');
     const days = Array.isArray(body.days) ? body.days.map(String).filter(d => DAY.test(d)).slice(0, 31).sort() : [];
+    const parts = body.parts && typeof body.parts === 'object' ? body.parts : {};
     const kind = body.kind === 'P' ? 'P' : 'R';
     const reason = String(body.reason || '').trim().slice(0, 1000);
     if (!emp || !days.length) return send(res, 400, { error: 'Dipendente o giorni mancanti' });
@@ -126,7 +132,7 @@ async function handler(req, res) {
     const staff = await rest('profiles?select=first_name,email&role=eq.dipendente&active=eq.true&unit_id=eq.' + unit +
       '&employee_id=eq.' + encodeURIComponent(emp));
     const what = kind === 'P' ? 'permesso 104' : 'riposo';
-    const list = days.map(dayText);
+    const list = days.map(d => dayText(d) + (PART_TEXT[parts[d]] || ''));
     messages = staff.map(p => ({
       to: p.email,
       subject: 'Richiesta di ' + what + ' non accolta – ' + days.map(d => d.slice(8) + '/' + d.slice(5, 7)).join(', '),
@@ -139,20 +145,59 @@ async function handler(req, res) {
     return send(res, 400, { error: 'Tipo di avviso non valido' });
   }
 
-  if (!messages.length) return send(res, 200, { sent: 0, failed: 0 });
+  const out = await deliver(messages, { from: from, replyTo: { name: sender, address: prof.email } });
+  return send(res, out.status, out.body);
+}
+
+async function deliver(messages, envelope) {
+  if (!messages.length) return { status: 200, body: { sent: 0, failed: 0 } };
   const mailer = getTransport();
   let sent = 0, failed = 0;
   for (const msg of messages) {
     try {
-      await mailer.sendMail(Object.assign({ from: from, replyTo: { name: sender, address: prof.email } }, msg));
+      await mailer.sendMail(Object.assign({}, envelope, msg));
       sent++;
     } catch (e) {
       failed++;
     }
   }
-  return send(res, failed && !sent ? 502 : 200, failed && !sent
-    ? { error: 'Invio delle mail non riuscito: controlla le impostazioni SMTP su Vercel.', sent, failed }
-    : { sent, failed });
+  return failed && !sent
+    ? { status: 502, body: { error: 'Invio delle mail non riuscito: controlla le impostazioni SMTP su Vercel.', sent, failed } }
+    : { status: 200, body: { sent, failed } };
+}
+
+// Riposi annullati da un permesso 104 di chi chiama e non ancora avvisati: una mail a ciascuno.
+async function bumped(res, rest, url, admin, unit, caller, prof) {
+  if (!prof || !prof.active || prof.unit_id !== unit) return send(res, 403, { error: 'Non autorizzato' });
+  const rows = await rest('request_bumps?select=id,employee_id,day,kind,part&notified_at=is.null&unit_id=eq.' + unit +
+    '&created_by=eq.' + encodeURIComponent(caller.id));
+  if (!rows.length) return send(res, 200, { sent: 0, failed: 0 });
+  const staff = await rest('profiles?select=first_name,email,employee_id&role=eq.dipendente&active=eq.true&unit_id=eq.' + unit);
+  const site = process.env.SITE_URL || '';
+  const messages = [];
+  rows.forEach(b => {
+    staff.filter(p => p.employee_id === b.employee_id).forEach(p => {
+      messages.push({
+        to: p.email,
+        subject: 'Richiesta di riposo annullata – ' + b.day.slice(8) + '/' + b.day.slice(5, 7),
+        text: 'Ciao ' + oneLine(p.first_name, 80) + ',\n\n' +
+          'la tua richiesta di riposo per ' + dayText(b.day) + (PART_TEXT[b.part] || '') + ' è stata annullata: ' +
+          'quel giorno era già al massimo delle richieste di riposo e un collega ha chiesto un permesso ' +
+          'Legge 104, che ha la precedenza.\n' +
+          'Se sei ancora nei termini puoi chiedere un altro giorno' + (site ? ': ' + site : '') + '.' +
+          '\n\nPer chiarimenti parla con il referente.' + FOOTER
+      });
+    });
+  });
+  const out = await deliver(messages, { from: { name: 'Turni Ambulanza', address: process.env.MAIL_FROM || 'turni@critn.it' } });
+  if (out.status === 200) {
+    await fetch(url + '/rest/v1/request_bumps?id=in.(' + rows.map(b => b.id).join(',') + ')', {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, admin),
+      body: JSON.stringify({ notified_at: new Date().toISOString() })
+    });
+  }
+  return send(res, out.status, out.body);
 }
 
 module.exports = handler;

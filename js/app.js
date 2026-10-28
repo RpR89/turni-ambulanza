@@ -199,13 +199,26 @@
   // Scrittura a mano: la casella non conta più come inserita dalla proposta automatica.
   function setCell(empId, key, entry) {
     var tag = online && O.tagOf(state, empId, key);
-    if (tag && R.codeOf(entry) !== tag && !touchedRequests.some(function (t) { return t.empId === empId && t.key === key; })) {
+    if (tag && (tag.indexOf(':') < 0 ? R.codeOf(entry) !== tag : partHit(entry, tag.slice(2))) && !touchedRequests.some(function (t) { return t.empId === empId && t.key === key; })) {
       touchedRequests.push({ empId: empId, key: key });
     }
     if (!state.assignments[empId]) state.assignments[empId] = {};
     if (entry) state.assignments[empId][key] = entry;
     else delete state.assignments[empId][key];
     if (state.auto[empId]) delete state.auto[empId][key];
+  }
+
+  // La voce ha turni della parte G/N (quella in cui il dipendente ha chiesto di stare a casa)?
+  function partHit(entry, part) {
+    return R.shiftIdsOf(state, entry).some(function (id) { return R.shiftPart(R.shiftInfo(state, id)) === part; });
+  }
+
+  var PART_TEXT = { G: 'di giorno', N: 'la notte' };
+
+  // Riposo chiesto per un solo turno: segno nella casella (la casella resta modificabile).
+  function offMark(empId, key) {
+    var part = online && R.offPartOn(state, empId, key);
+    return part ? '<i class="off-mark" title="Ha chiesto di stare a casa ' + PART_TEXT[part] + '">⌂' + part + '</i>' : '';
   }
 
   function getEntry(empId, key) {
@@ -384,12 +397,14 @@
         var wd = R.weekday(key);
         var fromReq = online && O.tagOf(state, e.id, key) && O.tagOf(state, e.id, key) === R.codeOf(entry);
         if (fromReq) tips.push('Richiesta del dipendente');
-        var cls = 'cell' + cellClass(entry, ambId) + (fromReq ? ' req' : '') + (wd >= 5 ? ' weekend' : '') +
+        var off = online && R.offPartOn(state, e.id, key);
+        if (off) tips.push('Richiesta del dipendente: a casa ' + PART_TEXT[off]);
+        var cls = 'cell' + cellClass(entry, ambId) + (fromReq ? ' req' : '') + (off ? ' req-off' : '') + (wd >= 5 ? ' weekend' : '') +
           (wd === 0 ? ' monday' : '') + (errs ? ' error' : softs ? ' soft' : '') +
           (R.isLocked(state, e.id, key) ? ' locked' : '') + (cellAuto(e.id, key, ambId) ? ' auto' : '');
         h += '<td class="' + cls + '" tabindex="' + (row === 0 && col === 0 ? 0 : -1) + '" data-emp="' + esc(e.id) +
           '" data-date="' + key + '" data-row="' + row + '" data-col="' + col + '"' +
-          (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry, ambId) + '</td>';
+          (tips.length ? ' title="' + esc(tips.join('\n')) + '"' : '') + '>' + cellHtml(entry, ambId) + offMark(e.id, key) + '</td>';
       });
       var bal = s.balance;
       var maxWe = +state.settings.maxWeekendsPerMonth;
@@ -525,6 +540,10 @@
 
   var KIND_TEXT = { R: 'riposo', P: 'permesso 104' };
 
+  function requestText(r) {
+    return r.part ? 'di stare a casa ' + PART_TEXT[r.part] : KIND_TEXT[r.kind];
+  }
+
   function applyRequests(list, quiet) {
     var res = O.syncRequests(state, list || []);
     reqConflicts = res.conflicts;
@@ -542,7 +561,7 @@
       var labels = c.shifts.map(function (id) { return R.shiftText(R.shiftInfo(state, id)); }).join(' + ');
       return {
         level: 'soft', type: 'request', empId: c.empId, dates: [c.day], requestId: c.request.id,
-        message: 'chiede ' + KIND_TEXT[c.kind] + ' il ' + c.day + (labels ? ' ma ha già il turno ' + labels : '') +
+        message: 'chiede ' + requestText(c.request) + ' il ' + c.day + (labels ? ' ma ha già il turno ' + labels : '') +
           (R.isLocked(state, c.empId, c.day) ? ' (casella bloccata)' : '') + ': togli il turno o rifiuta la richiesta'
       };
     });
@@ -560,7 +579,9 @@
       var groups = {};
       rejected.forEach(function (r) {
         var k = r.employee_id + '|' + r.kind;
-        (groups[k] = groups[k] || { employee_id: r.employee_id, kind: r.kind, days: [] }).days.push(r.day);
+        var g = groups[k] = groups[k] || { employee_id: r.employee_id, kind: r.kind, days: [], parts: {} };
+        g.days.push(r.day);
+        if (r.part) g.parts[r.day] = r.part;
       });
       return Promise.all(Object.keys(groups).map(function (k) {
         return online.notify(Object.assign({ type: 'rejected', reason: mail.reason }, groups[k]));
@@ -580,7 +601,7 @@
     var names = {};
     list.forEach(function (r) {
       var n = (empById(r.employee_id) || {}).name || '?';
-      (names[n] = names[n] || []).push(KIND_TEXT[r.kind] + ' del ' + fmtDate(r.day));
+      (names[n] = names[n] || []).push((r.part ? 'riposo ' + PART_TEXT[r.part] : KIND_TEXT[r.kind]) + ' del ' + fmtDate(r.day));
     });
     $('#rej-text').innerHTML = (fromEdit ? 'Hai cambiato a mano ' + (list.length === 1 ? 'una casella che era una richiesta' :
       'caselle che erano richieste') + ' di un dipendente. ' : '') + 'Stai rifiutando:<ul>' +
@@ -624,7 +645,10 @@
     if (!online) return;
     var ids = [];
     touched.forEach(function (t) {
-      if (R.codeOn(state, t.empId, t.key) === O.tagOf(state, t.empId, t.key)) return; // rimessa com'era
+      var tag = O.tagOf(state, t.empId, t.key);
+      if (tag.indexOf(':') < 0 ? R.codeOn(state, t.empId, t.key) === tag : !partHit(getEntry(t.empId, t.key), tag.slice(2))) {
+        return; // rimessa com'era
+      }
       (online.requests || []).forEach(function (r) {
         if (r.employee_id === t.empId && r.day === t.key) ids.push(r.id);
       });
@@ -825,10 +849,11 @@
     var emp = td.getAttribute('data-emp'), key = td.getAttribute('data-date');
     var amb = viewAmb();
     var fromReq = online && O.tagOf(state, emp, key) && O.tagOf(state, emp, key) === R.codeOf(entry);
-    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?cell-ghost| ?ghost-[GN]| ?locked| ?auto| ?req\b/g, '') +
-      cellClass(entry, amb) + (fromReq ? ' req' : '') +
+    var off = online && R.offPartOn(state, emp, key);
+    td.className = td.className.replace(/ ?cell-[A-Z]\b| ?cell-multi| ?cell-ghost| ?ghost-[GN]| ?locked| ?auto| ?req(-off)?\b/g, '') +
+      cellClass(entry, amb) + (fromReq ? ' req' : '') + (off ? ' req-off' : '') +
       (R.isLocked(state, emp, key) ? ' locked' : '') + (cellAuto(emp, key, amb) ? ' auto' : '');
-    td.innerHTML = cellHtml(entry, amb);
+    td.innerHTML = cellHtml(entry, amb) + offMark(emp, key);
   }
 
   function commit(focusEmp, focusDate) {
@@ -1385,6 +1410,7 @@
     f.maxConsecutiveDays.value = state.settings.maxConsecutiveDays;
     f.maxRestRequests.value = state.settings.maxRestRequests;
     f.requestDeadlineDay.value = state.settings.requestDeadlineDay;
+    f.maxRequestPercent.value = state.settings.maxRequestPercent;
     f.maxWeekendsPerMonth.value = state.settings.maxWeekendsPerMonth;
   }
 
@@ -1407,6 +1433,8 @@
         ? Math.round(+f.maxRestRequests.value) : R.DEFAULT_SETTINGS.maxRestRequests;
       state.settings.requestDeadlineDay = +f.requestDeadlineDay.value >= 1 && +f.requestDeadlineDay.value <= 31
         ? Math.round(+f.requestDeadlineDay.value) : R.DEFAULT_SETTINGS.requestDeadlineDay;
+      state.settings.maxRequestPercent = f.maxRequestPercent.value !== '' && +f.maxRequestPercent.value >= 0 &&
+        +f.maxRequestPercent.value <= 100 ? Math.round(+f.maxRequestPercent.value) : R.DEFAULT_SETTINGS.maxRequestPercent;
       state.settings.maxConsecutiveDays = +f.maxConsecutiveDays.value >= 1
         ? +f.maxConsecutiveDays.value : R.DEFAULT_SETTINGS.maxConsecutiveDays;
       state.settings.maxSameInRow = +f.maxSameInRow.value >= 1 ? +f.maxSameInRow.value : R.DEFAULT_SETTINGS.maxSameInRow;

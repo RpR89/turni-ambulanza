@@ -200,7 +200,6 @@ main { padding: 16px 20px 40px; }
 .check { display: inline-flex; align-items: center; gap: 6px; }
 .grid td.cell.error { box-shadow: inset 0 0 0 2px var(--bad); color: var(--bad); }
 .grid td.cell.soft { box-shadow: inset 0 0 0 2px var(--warn); }
-.grid td.cell { position: relative; }
 .grid td.cell.auto { font-style: italic; font-weight: 500; opacity: .8; }
 .grid td.cell.locked::after {
   content: "🔒"; position: absolute; top: 0; right: 1px; font-size: 8px; line-height: 1; opacity: .85;
@@ -569,3 +568,14 @@ body.staff-mode .tabs, body.staff-mode main > .panel { display: none !important;
 #users-table input[data-f="first_name"], #users-table input[data-f="last_name"] { width: 100%; min-width: 120px; }
 
 .ics-row { margin: 12px 0 4px; }
+
+/* Riposo chiesto per un solo turno (G = a casa di giorno, N = a casa la notte) */
+.grid td.cell { position: relative; }
+.grid td.cell .off-mark {
+  position: absolute; right: 1px; top: 1px; padding: 0 2px; border-radius: 3px; font-style: normal;
+  font-size: 9px; line-height: 12px; font-weight: 700; background: var(--bg); color: var(--muted);
+  border: 1px dashed var(--muted);
+}
+.grid td.cell sub, .req-tools sub { font-size: 9px; vertical-align: baseline; margin-left: 1px; }
+.staff-view .staff-alert + .staff-alert, .staff-view .note + .staff-alert { margin-top: 6px; }
+.staff-view .staff-alert { margin-bottom: 8px; }

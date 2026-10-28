@@ -264,7 +264,7 @@
   function fetchRequests(unitId) {
     var d = new Date();
     d.setMonth(d.getMonth() - 2);
-    return sb.from('requests').select('id,employee_id,day,kind').eq('unit_id', unitId)
+    return sb.from('requests').select('id,employee_id,day,kind,part').eq('unit_id', unitId)
       .gte('day', d.toISOString().slice(0, 10)).order('day').then(function (r) {
         if (r.error) throw r.error;
         return r.data || [];

@@ -58,7 +58,8 @@
     maxWeekendsPerMonth: 2,
     maxConsecutiveDays: 6,
     maxRestRequests: 4,
-    requestDeadlineDay: 15
+    requestDeadlineDay: 15,
+    maxRequestPercent: 25
   };
 
   // Qualifiche: l'autista soccorritore ha la patente per guidare l'ambulanza.
@@ -190,6 +191,30 @@
 
   function shiftText(s) {
     return s.label + (s.ambCode ? ' (' + s.ambCode + ')' : '');
+  }
+
+  // Parte della giornata di un turno, per le richieste dei dipendenti: N se passa la mezzanotte, G altrimenti.
+  function shiftPart(info) { return info && info.night ? 'N' : 'G'; }
+
+  // Parti (G, N) dei turni previsti in un giorno.
+  function dayParts(state, key) {
+    var out = [];
+    shiftsForDay(state, key).forEach(function (s) {
+      var p = shiftPart(s);
+      if (out.indexOf(p) < 0) out.push(p);
+    });
+    return out.sort();
+  }
+
+  /*
+   * Richiesta del dipendente di stare a casa in un solo turno del giorno (G o N), '' se non c'è.
+   * Arriva dal server con le altre richieste (state.reqTags: 'R:G' / 'R:N'); la proposta automatica
+   * non gli dà turni di quella parte.
+   */
+  function offPartOn(state, empId, key) {
+    var t = state.reqTags && state.reqTags[empId] && state.reqTags[empId][key];
+    var m = /^R:([GN])$/.exec(t || '');
+    return m ? m[1] : '';
   }
 
   // ---------- Caselle ----------
@@ -484,6 +509,11 @@
       reasons.push('il ' + addDays(key, 1) + ' c\'è la formazione: non può smontare notte quel giorno');
     }
 
+    var off = offPartOn(state, empId, key);
+    if (off && shiftPart(s) === off) {
+      reasons.push('il ' + key + ' ha chiesto di stare a casa ' + (off === 'N' ? 'la notte' : 'di giorno'));
+    }
+
     var already = shiftIdsOn(state, empId, key).indexOf(shiftId) >= 0 ? s.hours : 0;
     var day = round1(workHoursOn(state, empId, key) - already + s.hours);
     if (day > cfg.maxDailyHours) {
@@ -742,7 +772,8 @@
       employees: activeOf(state),
       assignments: JSON.parse(JSON.stringify(state.assignments || {})),
       locks: state.locks || {},
-      volunteers: state.volunteers || {}
+      volunteers: state.volunteers || {},
+      reqTags: state.reqTags || {}
     };
     var auto = JSON.parse(JSON.stringify(state.auto || {}));
     work.employees.forEach(function (e) { if (!work.assignments[e.id]) work.assignments[e.id] = {}; });
@@ -759,7 +790,7 @@
       });
     }
     // Punto di partenza: ciò che la proposta non può cambiare.
-    var base = { settings: state.settings, employees: work.employees, locks: work.locks,
+    var base = { settings: state.settings, employees: work.employees, locks: work.locks, reqTags: work.reqTags,
       assignments: JSON.parse(JSON.stringify(work.assignments)) };
 
     var target = {}, done = {}, nights = {}, weight = {};
@@ -1041,6 +1072,9 @@
     isDriver: isDriver,
     codeOf: codeOf,
     codeOn: codeOn,
+    shiftPart: shiftPart,
+    dayParts: dayParts,
+    offPartOn: offPartOn,
     shiftIdsOf: shiftIdsOf,
     shiftIdsOn: shiftIdsOn,
     shiftEntry: shiftEntry,

@@ -19,12 +19,16 @@ function withEnv({ caller = { role: 'referente', unit_id: UNIT, active: true, is
   process.env.MAIL_FROM = 'turni@critn.it';
   process.env.SITE_URL = 'https://turni.example';
   handler._setTransport({ sendMail: async m => { mails.push(m); } });
-  global.fetch = async (url) => {
-    calls.push(url);
+  global.fetch = async (url, opts) => {
+    calls.push(url + (opts && opts.method ? ' ' + opts.method : ''));
     const ok = (body, status = 200) => ({ ok: status < 300, status, json: async () => body });
     if (url.endsWith('/auth/v1/user')) return ok({ id: 'me' });
     if (url.includes('profiles?select=first_name,last_name')) {
       return ok([Object.assign({ first_name: 'Anna', last_name: 'Verdi', email: 'anna.verdi@critn.it' }, caller)]);
+    }
+    if (url.includes('/request_bumps?')) {
+      if (opts && opts.method === 'PATCH') return ok(null, 204);
+      return ok(url.includes('created_by=eq.me') ? [{ id: 'b1', employee_id: 'e2', day: '2026-12-10', kind: 'R', part: 'N' }] : []);
     }
     if (url.includes('/units?')) return ok([{ name: 'U.T. Trento' }]);
     if (url.includes('/published?')) return ok(published ? [{ month: '2026-12' }] : []);
@@ -88,3 +92,23 @@ test('avvisi: solo referente o vice attivo della stessa unità', () => withEnv({
   assert.equal(res2.statusCode, 403);
   assert.equal(mails.length, 0);
 }));
+
+test('riposo annullato da un 104: mail al collega, senza dire chi', () => withEnv(
+  { caller: { role: 'dipendente', unit_id: UNIT, active: true, is_admin: false } }, async (mails, calls) => {
+    const res = fakeRes();
+    await handler(req({ type: 'bumped', unit_id: UNIT }), res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(mails.map(m => m.to), ['sara@critn.it']);
+    assert.equal(mails[0].from.name, 'Turni Ambulanza');
+    assert.match(mails[0].text, /giovedì 10 dicembre 2026 \(solo il turno di notte\) è stata annullata/);
+    assert.doesNotMatch(mails[0].text, /Anna|Verdi/);
+    assert.ok(calls.some(c => c.includes('request_bumps?id=in.(b1)') && c.endsWith('PATCH')));
+  }));
+
+test('riposo annullato: solo dipendenti attivi della stessa unità', () => withEnv(
+  { caller: { role: 'dipendente', unit_id: OTHER, active: true, is_admin: false } }, async (mails) => {
+    const res = fakeRes();
+    await handler(req({ type: 'bumped', unit_id: UNIT }), res);
+    assert.equal(res.statusCode, 403);
+    assert.equal(mails.length, 0);
+  }));

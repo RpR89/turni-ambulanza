@@ -38,11 +38,23 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
     ambulanze) con le richieste dei colleghi, e tocca i giorni della sua riga per chiedere un **riposo (R)**
     — al massimo **4 al mese** — o un **permesso 104**, se ne ha diritto, nel limite mensile dei permessi.
     I permessi 104 dei colleghi li vede solo come **A**;
-  - le richieste si possono inserire o togliere fino al **giorno limite** del mese precedente (predefinito il 15:
-    per dicembre fino al 15 novembre) e mai dopo la pubblicazione. Limiti e giorno si cambiano in *Impostazioni*;
+  - nei giorni con turno di giorno e di notte (es. Canal San Bovo) il riposo si può chiedere anche per **un solo
+    turno**: **R<sub>G</sub>** (a casa di giorno) o **R<sub>N</sub>** (a casa la notte). Dove c'è un solo turno la
+    richiesta vale per la giornata. Ogni richiesta, anche per un solo turno, conta come una delle 4 del mese;
+  - ogni turno può avere a casa su richiesta al massimo il **25% dei dipendenti** (almeno uno; es. 4 su 16): il riposo
+    per tutta la giornata e il permesso 104 contano in tutti i turni del giorno. Sotto il tabellone delle richieste le
+    righe *A casa G* / *A casa N* mostrano quanti sono già a casa (in rosso i turni al completo). La percentuale si
+    cambia in *Impostazioni* (0 = nessun limite);
+  - il **permesso 104 ha la precedenza**: se il turno è al completo, il riposo chiesto per ultimo viene annullato; il
+    collega lo vede nella sua pagina e riceve una mail (senza sapere chi ha chiesto il permesso). Se il turno è al
+    completo di soli permessi 104, il 104 non entra;
+  - le richieste si possono inserire o togliere **dal 1° al giorno limite del mese precedente** (predefinito il 15:
+    per dicembre dal 1° al 15 novembre) e mai dopo la pubblicazione. Limiti e giorno si cambiano in *Impostazioni*;
     i controlli li fa il database, non solo la pagina;
   - nel tabellone del referente le richieste entrano da sole come `R` / `104` **sottolineate** (anche al posto di
-    turni messi dalla proposta automatica), e la proposta automatica le rispetta. Se in quel giorno c'è già un turno
+    turni messi dalla proposta automatica), e la proposta automatica le rispetta. Le richieste per un solo turno
+    compaiono come un piccolo segno **⌂G** / **⌂N** nella casella: si tolgono i turni automatici di quella parte e la
+    proposta automatica non ne mette altri. Se in quel giorno c'è già un turno
     scritto a mano, la richiesta resta in sospeso e compare nei *Controlli* con **Rifiuta la richiesta**; se il
     referente cambia a mano una casella che veniva da una richiesta, l'app chiede se rifiutarla. Nella finestra di
     rifiuto si sceglie **"Devo informare il dipendente?"**: se sì, si scrive la motivazione e il dipendente riceve una
@@ -215,7 +227,7 @@ npm start    # server locale su http://localhost:8080
 - `js/auth.js`, `js/config.js`: accesso, registrazione, amministrazione e salvataggio online (Supabase);
   `js/vendor/supabase.min.js` è [supabase-js](https://github.com/supabase/supabase-js) 2.45.4 (licenza MIT)
 - `api/admin-invite.js`: funzione Vercel per l'inserimento manuale degli utenti (usa la chiave service_role)
-- `api/notify.js`: funzione Vercel per le mail ai dipendenti (pubblicazione, richieste non accolte), con
+- `api/notify.js`: funzione Vercel per le mail ai dipendenti (pubblicazione, richieste non accolte, riposi annullati da un 104), con
   [nodemailer](https://nodemailer.com) (licenza MIT-0)
 - `supabase/schema.sql`: tabelle e regole di sicurezza del database; `supabase/test/` le prove su un Postgres locale:
   `psql -f supabase/test/mock_auth.sql -f supabase/schema.sql -f supabase/test/schema_test.sql`

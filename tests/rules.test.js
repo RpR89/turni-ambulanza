@@ -23,6 +23,25 @@ test('giorni lavorativi e monte ore mensile', () => {
   assert.equal(R.monthlyTarget(FT, 2026, 2), 152);
 });
 
+test('festivi infrasettimanali esclusi dal monte ore', () => {
+  assert.equal(R.easter(2026), '2026-04-05');
+  assert.equal(R.easter(2027), '2027-03-28');
+  assert.equal(R.easter(2025), '2025-04-20');
+  // Dicembre 2026: 23 giorni lun–ven, meno l'8 (mar), il 25 (ven) → 21; il 26 è sabato
+  assert.equal(R.workingDaysInMonth(2026, 12), 21);
+  assert.equal(R.monthlyTarget(FT, 2026, 12), 159.6);
+  assert.equal(R.isHoliday('2026-04-06'), true);   // Pasquetta
+  assert.equal(R.isHoliday('2026-06-02'), true);
+  assert.equal(R.isWorkingDay('2026-12-08'), false);
+  assert.equal(R.isWorkingDay('2026-12-09'), true);
+  // Novembre 2026: l'1 è domenica, nessun festivo infrasettimanale → 21
+  assert.equal(R.workingDaysInMonth(2026, 11), 21);
+  // ferie in un festivo non valgono come ore (il festivo non è nel monte ore)
+  const s = { settings: Object.assign({}, R.DEFAULT_SETTINGS), employees: [FT],
+    assignments: { a: { '2026-12-08': 'F', '2026-12-09': 'F' } }, locks: {}, auto: {} };
+  assert.equal(R.monthSummary(s, FT, 2026, 12).absence, 7.6);
+});
+
 test('settimane da lunedì a domenica', () => {
   assert.equal(R.weekday('2026-10-12'), 0); // lunedì
   assert.equal(R.weekStart('2026-10-18'), '2026-10-12');

@@ -169,6 +169,7 @@ main { padding: 16px 20px 40px; }
 .grid th.name small { display: block; font-size: 11px; }
 .grid .monday { border-left: 2px solid var(--muted); }
 .grid .weekend { background: var(--weekend); }
+.grid th.day.holiday { color: var(--bad); }
 
 .grid td.cell {
   width: 30px;

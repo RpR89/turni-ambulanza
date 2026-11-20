@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Turni">
-  <link rel="stylesheet" href="css/style.css?v=3.7.1">
+  <link rel="stylesheet" href="css/style.css?v=3.7.2">
 </head>
 <body>
   <header class="topbar no-print">
@@ -309,9 +309,10 @@
           <button class="primary">Salva</button>
         </form>
         <p class="note">
-          Monte ore mensile = giorni dal lunedì al venerdì del mese × (ore settimanali ÷ 5):
+          Monte ore mensile = giorni dal lunedì al venerdì del mese, esclusi i festivi (es. 8 e 25 dicembre),
+          × (ore settimanali ÷ 5):
           7,6 h per il tempo pieno da 38 h, 4,8 h per il part-time da 24 h.
-          Ferie e malattia nei giorni lun–ven valgono come ore svolte (stessa quota giornaliera).
+          Ferie e malattia nei giorni lun–ven non festivi valgono come ore svolte (stessa quota giornaliera).
           Ogni permesso 104 vale le ore indicate sopra, in qualsiasi giorno.
           La formazione conta come lavoro, anche nel massimo settimanale, e il giorno del corso non si può
           smontare notte (niente turno di notte il giorno prima).
@@ -349,7 +350,7 @@
     <button type="button" id="cookie-ok" class="primary">Ho capito</button>
   </div>
 
-  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.7.1 (correzioni di sicurezza)</footer>
+  <footer class="version no-print"><a href="privacy.html" target="_blank" rel="noopener">Privacy e cookie</a> · Turni Ambulanza · versione 3.7.2 (festivi esclusi dal monte ore)</footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="vol-pop" class="vol-pop no-print" role="dialog" aria-label="Volontari nel turno" hidden></div>
@@ -380,15 +381,15 @@
     </form>
   </dialog>
 
-  <script src="js/config.js?v=3.7.1"></script>
-  <script src="js/vendor/supabase.min.js?v=3.7.1"></script>
-  <script src="js/rules.js?v=3.7.1"></script>
-  <script src="js/requests.js?v=3.7.1"></script>
-  <script src="js/ics.js?v=3.7.1"></script>
-  <script src="js/logo.js?v=3.7.1"></script>
-  <script src="js/export-xlsx.js?v=3.7.1"></script>
-  <script src="js/staff.js?v=3.7.1"></script>
-  <script src="js/auth.js?v=3.7.1"></script>
-  <script src="js/app.js?v=3.7.1"></script>
+  <script src="js/config.js?v=3.7.2"></script>
+  <script src="js/vendor/supabase.min.js?v=3.7.2"></script>
+  <script src="js/rules.js?v=3.7.2"></script>
+  <script src="js/requests.js?v=3.7.2"></script>
+  <script src="js/ics.js?v=3.7.2"></script>
+  <script src="js/logo.js?v=3.7.2"></script>
+  <script src="js/export-xlsx.js?v=3.7.2"></script>
+  <script src="js/staff.js?v=3.7.2"></script>
+  <script src="js/auth.js?v=3.7.2"></script>
+  <script src="js/app.js?v=3.7.2"></script>
 </body>
 </html>

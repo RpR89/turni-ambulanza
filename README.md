@@ -125,7 +125,10 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
   Il valore è evidenziato quando si discosta troppo dalla media, calcolata in proporzione al contratto.
 - **Monte ore mensile** per ogni dipendente:
   - giorni dal lunedì al venerdì del mese × 7,6 h per il tempo pieno (38 h/settimana);
-  - giorni dal lunedì al venerdì × 4,8 h per il part-time da 24 h/settimana (24 ÷ 5).
+  - giorni dal lunedì al venerdì × 4,8 h per il part-time da 24 h/settimana (24 ÷ 5);
+  - i **festivi infrasettimanali** non contano (Capodanno, Epifania, Pasquetta, 25 aprile, 1° maggio, 2 giugno,
+    Ferragosto, Ognissanti, 8 dicembre, Natale, Santo Stefano): per esempio a dicembre 2026 l'8 e il 25.
+    Nel tabellone i festivi hanno il giorno in rosso.
 
   Accanto al monte ore trovi le ore fatte e il saldo (+/−).
   Si può impostare anche un orario settimanale diverso, a scelta.
@@ -183,7 +186,7 @@ un account e i turni di ogni unità sono salvati online; senza, l'app funziona s
 - Un turno conta per intero nel giorno in cui inizia: la notte di domenica 19–7
   appartiene alla settimana di quella domenica.
 - Ferie e malattia nei giorni lun–ven valgono come ore svolte, con la stessa quota giornaliera
-  del monte ore (7,6 h oppure 4,8 h). Nel fine settimana valgono 0.
+  del monte ore (7,6 h oppure 4,8 h). Nel fine settimana e nei festivi valgono 0.
 - Il permesso 104 vale 7,6 h in qualsiasi giorno, anche per i part-time.
   Ore e numero massimo si cambiano in *Impostazioni*.
 - La formazione conta come lavoro: entra nelle ore del mese e nel massimo di 48 h settimanali.

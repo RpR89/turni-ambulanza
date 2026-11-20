@@ -24,7 +24,7 @@
     return [{ id: 'A1', code: '', shifts: preset24h() }];
   }
 
-  // Assenze giustificate: valgono come ore lavorate nei giorni lun–ven.
+  // Assenze giustificate: valgono come ore lavorate nei giorni lun–ven non festivi.
   var ABSENCES = {
     F: { code: 'F', label: 'Ferie' },
     M: { code: 'M', label: 'Malattia' }
@@ -100,7 +100,29 @@
     return (new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay() + 6) % 7;
   }
 
-  function isWorkingDay(key) { return weekday(key) < 5; }
+  // Pasqua (calendario gregoriano, algoritmo di Meeus/Jones/Butcher) → "AAAA-MM-GG".
+  function easter(y) {
+    var a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+    var f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    var h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+    var l = (32 + 2 * e + 2 * i - h - k) % 7, mm = Math.floor((a + 11 * h + 22 * l) / 451);
+    var month = Math.floor((h + l - 7 * mm + 114) / 31), day = ((h + l - 7 * mm + 114) % 31) + 1;
+    return toKey(y, month, day);
+  }
+
+  // Festività nazionali: Capodanno, Epifania, Pasquetta, Liberazione, Lavoro, Repubblica,
+  // Ferragosto, Ognissanti, Immacolata, Natale, Santo Stefano.
+  var FIXED_HOLIDAYS = ['01-01', '01-06', '04-25', '05-01', '06-02', '08-15', '11-01', '12-08', '12-25', '12-26'];
+  var holidayCache = {};
+
+  function isHoliday(key) {
+    var y = +key.slice(0, 4);
+    if (!holidayCache[y]) holidayCache[y] = addDays(easter(y), 1); // lunedì dell'Angelo
+    return FIXED_HOLIDAYS.indexOf(key.slice(5)) >= 0 || key === holidayCache[y];
+  }
+
+  // Giorno lavorativo per il monte ore: dal lunedì al venerdì, festivi esclusi.
+  function isWorkingDay(key) { return weekday(key) < 5 && !isHoliday(key); }
 
   function daysInMonth(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
 
@@ -287,7 +309,7 @@
 
   function dailyHours(emp) { return emp.weeklyHours / 5; }
 
-  // Monte ore del mese: giorni lun–ven × (ore settimanali / 5).
+  // Monte ore del mese: giorni lun–ven non festivi × (ore settimanali / 5).
   // Tempo pieno 38 h → 7,6 h al giorno; part-time 24 h → 4,8 h al giorno.
   function monthlyTarget(emp, y, m) {
     return round1(workingDaysInMonth(y, m) * dailyHours(emp));
@@ -1089,6 +1111,8 @@
     addDays: addDays,
     weekday: weekday,
     isWorkingDay: isWorkingDay,
+    isHoliday: isHoliday,
+    easter: easter,
     daysInMonth: daysInMonth,
     monthDays: monthDays,
     weekStart: weekStart,

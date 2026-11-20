@@ -357,15 +357,17 @@
     var h = '<thead><tr><th class="name">Dipendente</th>';
     days.forEach(function (key) {
       var wd = R.weekday(key);
-      var cls = (wd >= 5 ? 'weekend' : '') + (key === todayKey ? ' today' : '') + (wd === 0 ? ' monday' : '');
-      h += '<th class="day ' + cls + '"><span>' + WEEKDAYS[wd] + '</span>' + (+key.slice(8)) + '</th>';
+      var hol = R.isHoliday(key);
+      var cls = (wd >= 5 ? 'weekend' : '') + (hol ? ' holiday' : '') + (key === todayKey ? ' today' : '') + (wd === 0 ? ' monday' : '');
+      h += '<th class="day ' + cls + '"' + (hol ? ' title="Festivo: non conta nel monte ore"' : '') + '><span>' +
+        WEEKDAYS[wd] + '</span>' + (+key.slice(8)) + '</th>';
     });
     h += '<th class="sum" title="Turni di notte nel mese">Notti</th>' +
       '<th class="sum" title="Weekend lavorati (basta il sabato o la domenica)">Week<br>end</th>' +
       '<th class="sum" title="Ore dei turni G e N">Turni<br>h</th>' +
       '<th class="sum" title="Ore di formazione">Form.<br>h</th>' +
-      '<th class="sum" title="Ferie e malattia nei giorni lun–ven, permessi 104">Assenze<br>h</th>' +
-      '<th class="sum" title="Giorni lun–ven × ore settimanali ÷ 5">Previste<br>h</th>' +
+      '<th class="sum" title="Ferie e malattia nei giorni lun–ven non festivi, permessi 104">Assenze<br>h</th>' +
+      '<th class="sum" title="Giorni lun–ven non festivi × ore settimanali ÷ 5">Previste<br>h</th>' +
       '<th class="sum" title="Turni + formazione + assenze − previste">Saldo<br>h</th></tr></thead><tbody>';
 
     if (!emps.length) {
